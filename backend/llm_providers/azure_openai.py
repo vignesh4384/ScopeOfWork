@@ -5,23 +5,23 @@ from typing import Any, List
 import asyncio
 from openai import AsyncAzureOpenAI
 
-from ..config import settings
-from .base import LLMProvider
+import config
+from llm_providers.base import LLMProvider
 
 
 class AzureOpenAILLMProvider(LLMProvider):
     def __init__(self) -> None:
-        self.enabled = bool(settings.azure_openai_endpoint and settings.azure_openai_key)
+        self.enabled = bool(config.settings.azure_openai_endpoint and config.settings.azure_openai_key)
         self.client = (
             AsyncAzureOpenAI(
-                api_key=settings.azure_openai_key,
-                azure_endpoint=settings.azure_openai_endpoint,
+                api_key=config.settings.azure_openai_key,
+                azure_endpoint=config.settings.azure_openai_endpoint,
                 api_version="2025-01-01-preview",
             )
             if self.enabled
             else None
         )
-        self.deployment = settings.azure_openai_deployment
+        self.deployment = config.settings.azure_openai_deployment
 
     async def classify(self, prompt: str) -> str:
         if not self.enabled or not self.client:

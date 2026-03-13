@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from ..schemas import PurchaseRequestCreate
+from schemas import PurchaseRequestCreate
 
 
 def build_sap_payload(req: PurchaseRequestCreate) -> Dict:

@@ -4,14 +4,14 @@ import httpx
 import asyncio
 from typing import List, Any
 
-from ..config import settings
-from .base import LLMProvider
+import config
+from llm_providers.base import LLMProvider
 
 
 class AnthropicLLMProvider(LLMProvider):
     def __init__(self) -> None:
-        self.api_key = settings.anthropic_api_key
-        self.model = settings.anthropic_model
+        self.api_key = config.settings.anthropic_api_key
+        self.model = config.settings.anthropic_model
         self.enabled = bool(self.api_key and self.model)
         self.endpoint = "https://api.anthropic.com/v1/messages"
         self.client = httpx.AsyncClient(timeout=20)

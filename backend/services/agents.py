@@ -8,8 +8,8 @@ from typing import List, Any
 from fastapi import HTTPException
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from ..llm_providers.factory import get_provider
-from ..schemas import (
+from llm_providers.factory import get_provider
+from schemas import (
     ClassificationResponse,
     MaterialDetailsResponse,
     ParameterField,
