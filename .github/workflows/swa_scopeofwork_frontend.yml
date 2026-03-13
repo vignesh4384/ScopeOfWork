@@ -12,7 +12,7 @@ on:
 
 env:
   VITE_API_URL: https://sowcomposer-e5hzeadgfwbpfdhd.eastus-01.azurewebsites.net
-  VITE_SOW_AGENT_URL: https://calm-island-08c473e044.z01.azurestaticapps.net
+  VITE_SOW_AGENT_URL: https://calm-island-08c473e0f.4.azurestaticapps.net
 
 jobs:
   build-and-deploy:
