@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   Workflow,
 } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
+//import { useAuth } from '../hooks/useAuth';
 
 interface AgentPortalProps {
   tenderingPath?: string;
@@ -21,7 +21,9 @@ interface AgentPortalProps {
  */
 export default function AgentPortal({ tenderingPath = '/sourcing' }: AgentPortalProps) {
   const navigate = useNavigate();
-  const { username, logout } = useAuth();
+ // const { username, logout } = useAuth();
+    const username = 'User';
+    const logout = async () => {};
   const [logoutBusy, setLogoutBusy] = useState(false);
 
   // Configure the Scope of Work target through env so we don't hardcode URLs.

@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Build and Deploy Job
     env:
-      VITE_API_URL: https://sowcomposer-e5hzeadgfwbfqfhd.eastus-01.azurewebsites.net
+      VITE_API_URL: https://sowcomposer-e5hzeadgfwbpfdhd.eastus-01.azurewebsites.net
       VITE_SOW_AGENT_URL: https://calm-island-08c473e044.z01.azurestaticapps.net
     steps:
       - uses: actions/checkout@v3

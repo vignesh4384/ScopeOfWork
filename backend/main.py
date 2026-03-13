@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Ensure the backend package directory is on sys.path so that sibling imports
+# (api, config, db, …) resolve whether uvicorn is launched from the project
+# root  (`uvicorn backend.main:app`) or from inside backend/ (`uvicorn main:app`).
+_backend_dir = str(Path(__file__).resolve().parent)
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Use absolute imports because this file is executed as a module entry point.
 from api.routers import router
 from config import settings
 from db import init_db
