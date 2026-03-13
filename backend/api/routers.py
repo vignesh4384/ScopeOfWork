@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from .. import models, schemas
-from ..db import get_session
-from ..services import agents
-from ..services.sap_stub import build_sap_payload
+import models, schemas
+from db import get_session
+from services import agents
+from services.sap_stub import build_sap_payload
 
 router = APIRouter(prefix="/api")
 
