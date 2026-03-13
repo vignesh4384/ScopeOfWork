@@ -1,9 +1,17 @@
+import config
+from pathlib import Path
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-import config
+# Ensure SQLite directory exists in Azure (or any environment)
+url = make_url(config.settings.database_url)
+if url.drivername.startswith("sqlite"):
+    db_path = url.database
+    if db_path and not db_path.startswith(":"):
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
 engine = create_async_engine(config.settings.database_url, echo=False, future=True)
 async_session = sessionmaker(
