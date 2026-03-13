@@ -4,9 +4,10 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api.routers import router
-from .config import settings
-from .db import init_db
+# Use absolute imports because this file is executed as a module entry point.
+from api.routers import router
+from config import settings
+from db import init_db
 
 app = FastAPI(title="Scope of Work Agent API", version="0.1.0")
 
