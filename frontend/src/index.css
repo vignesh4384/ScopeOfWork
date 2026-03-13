@@ -1,0 +1,30 @@
+@import url("https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #0f0a26;
+  background-color: #f6f3ff;
+  font-family: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(180deg, #f6f3ff 0%, #ffffff 65%, #f7e6ff 100%);
+}
+
+.gradient-hero {
+  background: linear-gradient(135deg, #7b2ff7 0%, #ff5fa2 100%);
+}
+
+.glass {
+  backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 16px 50px rgba(91, 36, 255, 0.12);
+}
+
+.badge {
+  @apply rounded-full bg-surface text-primary font-medium text-xs px-3 py-1 shadow-card;
+}

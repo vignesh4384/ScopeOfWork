@@ -1,0 +1,33 @@
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scope-of-work-agent-backend"
+version = "0.1.0"
+description = "FastAPI backend with Semantic Kernel agents for purchase request scaffolding."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.111.0",
+  "uvicorn[standard]>=0.30.0",
+  "sqlmodel>=0.0.22",
+  "pydantic-settings>=2.2.1",
+  "semantic-kernel>=1.5.2",
+  "httpx>=0.27.0",
+  "python-dotenv>=1.0.1",
+  "aiosqlite>=0.19.0",
+  "tenacity>=8.2.3"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+  "pytest-asyncio>=0.23.0",
+  "httpx>=0.27.0",
+  "coverage>=7.5.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

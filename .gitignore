@@ -1,0 +1,18 @@
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.env
+
+# Python / backend
+backend/.env
+backend/__pycache__/
+backend/*.log
+backend/data/
+backend/*.db
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Vite / build
+frontend/.vite
