@@ -5,12 +5,16 @@
 
 cd /home/site/wwwroot
 
-# Install dependencies if .python_packages exists (zip deploy)
-if [ -d ".python_packages" ]; then
+# Set up PYTHONPATH for zip-deployed dependencies
+if [ -d ".python_packages/lib/site-packages" ]; then
     export PYTHONPATH="/home/site/wwwroot/.python_packages/lib/site-packages:$PYTHONPATH"
+    export PATH="/home/site/wwwroot/.python_packages/lib/site-packages/bin:$PATH"
 fi
 
-gunicorn main:app \
+# Azure sets PORT env var; default to 8000 if not set
+PORT="${PORT:-8000}"
+
+python -m gunicorn main:app \
     --worker-class uvicorn.workers.UvicornWorker \
-    --bind 0.0.0.0:8000 \
+    --bind "0.0.0.0:$PORT" \
     --timeout 120
