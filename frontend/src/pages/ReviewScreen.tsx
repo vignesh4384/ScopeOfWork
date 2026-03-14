@@ -50,6 +50,14 @@ export default function ReviewScreen() {
     navigate("/");
   };
 
+  const tenderingUrl = (import.meta.env.VITE_TENDERING_URL as string | undefined)?.trim() || '';
+
+  const handleSendToTendering = () => {
+    if (!tenderingUrl || !state.items.length) return;
+    const payload = btoa(JSON.stringify(state.items));
+    window.location.href = `${tenderingUrl}/sourcing?sow=${payload}`;
+  };
+
   const renderCostCodes = (item: ItemDraft) => {
     if (item.commercial.budget_type === "CAPEX") {
       return `WBS: ${item.commercial.wbs || "-"} · GL: ${item.commercial.gl_account}`;
@@ -145,13 +153,23 @@ export default function ReviewScreen() {
         >
           Add another item
         </button>
-        <button
-          onClick={handleSubmitAll}
-          disabled={submitting || !state.items.length}
-          className="rounded-full bg-primary px-6 py-3 text-white font-semibold shadow-card transition hover:translate-y-[-1px] hover:shadow-lg disabled:opacity-60"
-        >
-          {submitting ? "Submitting..." : "Submit all"}
-        </button>
+        {tenderingUrl ? (
+          <button
+            onClick={handleSendToTendering}
+            disabled={!state.items.length}
+            className="rounded-full bg-primary px-6 py-3 text-white font-semibold shadow-card transition hover:translate-y-[-1px] hover:shadow-lg disabled:opacity-60"
+          >
+            Send to Tendering
+          </button>
+        ) : (
+          <button
+            onClick={handleSubmitAll}
+            disabled={submitting || !state.items.length}
+            className="rounded-full bg-primary px-6 py-3 text-white font-semibold shadow-card transition hover:translate-y-[-1px] hover:shadow-lg disabled:opacity-60"
+          >
+            {submitting ? "Submitting..." : "Submit all"}
+          </button>
+        )}
       </div>
     </div>
   );
