@@ -5,6 +5,10 @@
 
 cd /home/site/wwwroot
 
+# Create persistent data directory and override DATABASE_URL
+mkdir -p /home/data
+export DATABASE_URL="sqlite+aiosqlite:////home/data/scope_agent.db"
+
 # Set up PYTHONPATH for zip-deployed dependencies
 if [ -d ".python_packages/lib/site-packages" ]; then
     export PYTHONPATH="/home/site/wwwroot/.python_packages/lib/site-packages:$PYTHONPATH"
