@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-3-sonnet-20240229"
     provider_preference: str = "anthropic"  # options: anthropic|azure
+    # Database — Azure SQL (free tier) or SQLite fallback
     database_url: str = "sqlite+aiosqlite:///data/app.db"
     allow_origins: str = "http://localhost:5173,https://calm-island-08c473e0f.4.azurestaticapps.net"
 
