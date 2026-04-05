@@ -72,9 +72,12 @@ export default function ReviewScreen() {
         )
       );
       reset();
-      // Navigate the parent window (Autonomous Sourcing) to the tendering/sourcing page
-      const target = window.parent !== window ? window.parent : window;
-      target.location.href = "/sourcing";
+      // Tell the parent (Autonomous Sourcing) to navigate to tendering.
+      // Uses postMessage because SOWComposer runs on a different origin
+      // inside an iframe — direct cross-origin navigation won't work.
+      if (window.self !== window.top) {
+        window.parent.postMessage({ type: "sow-navigate", path: "/sourcing" }, "*");
+      }
     } catch (e: any) {
       setError(e?.message || "Failed to save before tendering");
       setTenderingLoading(false);
