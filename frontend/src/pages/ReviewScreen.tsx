@@ -76,7 +76,11 @@ export default function ReviewScreen() {
       // Uses postMessage because SOWComposer runs on a different origin
       // inside an iframe — direct cross-origin navigation won't work.
       if (window.self !== window.top) {
-        window.parent.postMessage({ type: "sow-navigate", path: "/sourcing" }, "*");
+        window.parent.postMessage({
+          type: "sow-navigate",
+          path: "/sourcing",
+          sowItems: state.items,
+        }, "*");
       }
     } catch (e: any) {
       setError(e?.message || "Failed to save before tendering");
