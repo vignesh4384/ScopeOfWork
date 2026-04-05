@@ -203,8 +203,11 @@ async def api_similarity_check(
                 "embedding": row[4],                 # scope_embedding (JSON string or None)
                 "source": "contract_intelligence",
             })
-    except Exception:
-        pass  # Contract Intelligence table may not exist in dev/SQLite — gracefully skip
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Could not query contracts table for similarity: %s", exc
+        )
 
     # --- Source 2: SOW Agent reference scopes (ScopeReference table) ---
     sow_result = await session.execute(select(ScopeReference))
