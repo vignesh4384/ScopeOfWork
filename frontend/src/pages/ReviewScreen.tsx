@@ -50,11 +50,35 @@ export default function ReviewScreen() {
     navigate("/");
   };
 
-  const handleSendToTendering = () => {
+  const [tenderingLoading, setTenderingLoading] = useState(false);
+
+  const handleSendToTendering = async () => {
     if (!state.items.length) return;
-    // Navigate the parent window (Autonomous Sourcing) to the tendering/sourcing page
-    const target = window.parent !== window ? window.parent : window;
-    target.location.href = "/sourcing";
+    setTenderingLoading(true);
+    setError(null);
+    try {
+      await Promise.all(
+        state.items.map((item) =>
+          createPurchaseRequest({
+            type: item.type,
+            initial_description: item.initial_description,
+            parameters: item.parameters,
+            need_by_date: item.commercial.need_by_date,
+            budget_type: item.commercial.budget_type,
+            wbs: item.commercial.wbs ?? null,
+            cost_center: item.commercial.cost_center ?? null,
+            gl_account: item.commercial.gl_account,
+          })
+        )
+      );
+      reset();
+      // Navigate the parent window (Autonomous Sourcing) to the tendering/sourcing page
+      const target = window.parent !== window ? window.parent : window;
+      target.location.href = "/sourcing";
+    } catch (e: any) {
+      setError(e?.message || "Failed to save before tendering");
+      setTenderingLoading(false);
+    }
   };
 
   const renderCostCodes = (item: ItemDraft) => {
@@ -162,10 +186,10 @@ export default function ReviewScreen() {
           </button>
           <button
             onClick={handleSendToTendering}
-            disabled={!state.items.length}
+            disabled={tenderingLoading || !state.items.length}
             className="rounded-full bg-primary px-6 py-3 text-white font-semibold shadow-card transition hover:translate-y-[-1px] hover:shadow-lg disabled:opacity-60"
           >
-            Send to Tendering
+            {tenderingLoading ? "Saving..." : "Send to Tendering"}
           </button>
         </div>
       </div>
