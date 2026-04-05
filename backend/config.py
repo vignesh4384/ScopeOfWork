@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     provider_preference: str = "anthropic"  # options: anthropic|azure
     # Database — Azure SQL (free tier) or SQLite fallback
     database_url: str = "sqlite+aiosqlite:///data/app.db"
-    allow_origins: str = "http://localhost:5173,http://localhost:5174,https://calm-island-08c473e0f.4.azurestaticapps.net"
+    allow_origins: str = "http://localhost:5173,http://localhost:5174,https://sowcomposer-e5hzeadgfwbpfdhd.eastus-01.azurewebsites.net"
 
     class Config:
         env_file = Path(__file__).resolve().parent / ".env"
