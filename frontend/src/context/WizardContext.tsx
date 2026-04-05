@@ -1,5 +1,13 @@
 import React, { createContext, useContext, useState } from "react";
-import type { RequestType, ItemDraft, CommercialData } from "../types";
+import type {
+  RequestType,
+  ItemDraft,
+  CommercialData,
+  OilGasSector,
+  GoldPlatingResponse,
+  SimilarityMatch,
+  ScopeOutputs,
+} from "../types";
 
 type WizardState = {
   initialDescription: string;
@@ -7,6 +15,15 @@ type WizardState = {
   parameters: Record<string, unknown>;
   commercial?: CommercialData;
   items: ItemDraft[];
+  // Service scope flow
+  scopeId?: number;
+  scopeSource?: "new" | "uploaded";
+  scopeText?: string;
+  refinedScopeText?: string;
+  sector?: OilGasSector;
+  goldPlatingReport?: GoldPlatingResponse;
+  similarityResults?: SimilarityMatch[];
+  scopeOutputs?: ScopeOutputs;
 };
 
 type WizardContextType = {
@@ -18,16 +35,27 @@ type WizardContextType = {
   addItem: (commercial: CommercialData) => void;
   deleteItem: (index: number) => void;
   reset: () => void;
+  // Service scope setters
+  setScopeId: (id: number) => void;
+  setScopeSource: (source: "new" | "uploaded") => void;
+  setScopeText: (text: string) => void;
+  setRefinedScopeText: (text: string) => void;
+  setSector: (sector: OilGasSector) => void;
+  setGoldPlatingReport: (report: GoldPlatingResponse) => void;
+  setSimilarityResults: (results: SimilarityMatch[]) => void;
+  setScopeOutputs: (outputs: ScopeOutputs) => void;
 };
 
 const WizardContext = createContext<WizardContextType | undefined>(undefined);
 
+const initialState: WizardState = {
+  initialDescription: "",
+  parameters: {},
+  items: [],
+};
+
 export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<WizardState>({
-    initialDescription: "",
-    parameters: {},
-    items: [],
-  });
+  const [state, setState] = useState<WizardState>(initialState);
 
   const setInitialDescription = (initialDescription: string) =>
     setState((prev) => ({ ...prev, initialDescription }));
@@ -47,12 +75,11 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         initial_description: prev.initialDescription,
         parameters: prev.parameters,
         commercial,
+        scopeId: prev.scopeId,
+        scopeOutputs: prev.scopeOutputs,
       };
       return {
-        initialDescription: "",
-        type: undefined,
-        parameters: {},
-        commercial: undefined,
+        ...initialState,
         items: [...prev.items, draft],
       };
     });
@@ -63,18 +90,40 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       items: prev.items.filter((_, i) => i !== index),
     }));
 
-  const reset = () =>
-    setState({
-      initialDescription: "",
-      parameters: {},
-      type: undefined,
-      commercial: undefined,
-      items: [],
-    });
+  const reset = () => setState(initialState);
+
+  // Service scope setters
+  const setScopeId = (scopeId: number) => setState((prev) => ({ ...prev, scopeId }));
+  const setScopeSource = (scopeSource: "new" | "uploaded") => setState((prev) => ({ ...prev, scopeSource }));
+  const setScopeText = (scopeText: string) => setState((prev) => ({ ...prev, scopeText }));
+  const setRefinedScopeText = (refinedScopeText: string) => setState((prev) => ({ ...prev, refinedScopeText }));
+  const setSector = (sector: OilGasSector) => setState((prev) => ({ ...prev, sector }));
+  const setGoldPlatingReport = (goldPlatingReport: GoldPlatingResponse) =>
+    setState((prev) => ({ ...prev, goldPlatingReport }));
+  const setSimilarityResults = (similarityResults: SimilarityMatch[]) =>
+    setState((prev) => ({ ...prev, similarityResults }));
+  const setScopeOutputs = (scopeOutputs: ScopeOutputs) => setState((prev) => ({ ...prev, scopeOutputs }));
 
   return (
     <WizardContext.Provider
-      value={{ state, setInitialDescription, setType, setParameters, setCommercial, addItem, deleteItem, reset }}
+      value={{
+        state,
+        setInitialDescription,
+        setType,
+        setParameters,
+        setCommercial,
+        addItem,
+        deleteItem,
+        reset,
+        setScopeId,
+        setScopeSource,
+        setScopeText,
+        setRefinedScopeText,
+        setSector,
+        setGoldPlatingReport,
+        setSimilarityResults,
+        setScopeOutputs,
+      }}
     >
       {children}
     </WizardContext.Provider>

@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routers import router
+from api.service_router import router as service_router
 from config import settings
 from db import init_db
 
@@ -36,6 +37,7 @@ async def startup_event():
 
 
 app.include_router(router)
+app.include_router(service_router, prefix="/api/service")
 
 
 def run():

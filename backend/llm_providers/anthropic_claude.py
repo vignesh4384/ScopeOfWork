@@ -14,7 +14,7 @@ class AnthropicLLMProvider(LLMProvider):
         self.model = config.settings.anthropic_model
         self.enabled = bool(self.api_key and self.model)
         self.endpoint = "https://api.anthropic.com/v1/messages"
-        self.client = httpx.AsyncClient(timeout=20)
+        self.client = httpx.AsyncClient(timeout=90)
 
     async def classify(self, prompt: str) -> str:
         if not self.enabled:
@@ -22,7 +22,7 @@ class AnthropicLLMProvider(LLMProvider):
         try:
             resp = await asyncio.wait_for(
                 self._send(
-                    system="Classify the request as 'material' or 'service' only.",
+                    system="Classify the procurement request as 'material' (tangible goods/equipment to purchase) or 'service' (work performed by people — inspection, maintenance, consulting, construction, testing, monitoring, etc.). Reply with exactly one word: material or service.",
                     user=prompt,
                     max_tokens=10,
                 ),
@@ -35,6 +35,7 @@ class AnthropicLLMProvider(LLMProvider):
 
     async def generate(self, messages: List[dict[str, str]], **kwargs: Any) -> str:
         if not self.enabled:
+            print(f"[Anthropic] generate called but provider disabled")
             return self._fallback_generate(messages)
         try:
             # Convert OpenAI-style messages to Anthropic format
@@ -43,11 +44,12 @@ class AnthropicLLMProvider(LLMProvider):
             user_parts = [m["content"] for m in messages if m["role"] == "user"]
             user_text = "\n".join(user_parts)
             resp = await asyncio.wait_for(
-                self._send(system=system_text, user=user_text, max_tokens=1800),
-                timeout=25,
+                self._send(system=system_text, user=user_text, max_tokens=4000),
+                timeout=90,
             )
             return resp
-        except Exception:
+        except Exception as e:
+            print(f"[Anthropic] generate failed: {type(e).__name__}: {e}")
             return self._fallback_generate(messages)
 
     async def _send(self, system: str, user: str, max_tokens: int) -> str:
@@ -73,7 +75,16 @@ class AnthropicLLMProvider(LLMProvider):
     @staticmethod
     def _fallback_classify(prompt: str) -> str:
         lower = prompt.lower()
-        if any(word in lower for word in ["install", "consult", "support", "maintenance", "service"]):
+        service_keywords = [
+            "install", "consult", "support", "maintenance", "service",
+            "inspection", "inspect", "pigging", "monitoring", "survey",
+            "testing", "calibration", "repair", "overhaul", "cleaning",
+            "construction", "commissioning", "decommissioning", "demolition",
+            "audit", "assessment", "analysis", "ndt", "welding", "coating",
+            "scaffolding", "insulation", "transportation", "logistics",
+            "training", "engineering", "design", "study", "review",
+        ]
+        if any(word in lower for word in service_keywords):
             return "service"
         return "material"
 

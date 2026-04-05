@@ -3,25 +3,50 @@ import InitialScreen from "./pages/InitialScreen";
 import DetailsScreen from "./pages/DetailsScreen";
 import CommercialScreen from "./pages/CommercialScreen";
 import ReviewScreen from "./pages/ReviewScreen";
+import ScopeSourceScreen from "./pages/ScopeSourceScreen";
+import ScopeEditorScreen from "./pages/ScopeEditorScreen";
+import GoldPlatingScreen from "./pages/GoldPlatingScreen";
+import SimilarityScreen from "./pages/SimilarityScreen";
+import ScopeOutputScreen from "./pages/ScopeOutputScreen";
+import { useWizard } from "./context/WizardContext";
 
-const steps = [
+type Step = { path: string; label: string; idx: number };
+
+const materialSteps: Step[] = [
   { path: "/", label: "Describe", idx: 1 },
   { path: "/details", label: "Details", idx: 2 },
   { path: "/commercial", label: "Commercial", idx: 3 },
   { path: "/review", label: "Review", idx: 4 },
 ];
 
+const serviceSteps: Step[] = [
+  { path: "/", label: "Describe", idx: 1 },
+  { path: "/scope-source", label: "Source", idx: 2 },
+  { path: "/scope-editor", label: "Editor", idx: 3 },
+  { path: "/gold-plating", label: "Gold Plating", idx: 4 },
+  { path: "/similarity", label: "Similarity", idx: 5 },
+  { path: "/scope-output", label: "Outputs", idx: 6 },
+  { path: "/commercial", label: "Commercial", idx: 7 },
+  { path: "/review", label: "Review", idx: 8 },
+];
+
 function Stepper() {
   const location = useLocation();
+  const { state } = useWizard();
+  const isService =
+    state.type === "service" ||
+    state.items.some((item) => item.type === "service");
+  const steps = isService ? serviceSteps : materialSteps;
+
   return (
-    <div className="flex gap-3 items-center justify-center mt-6">
+    <div className="flex gap-2 items-center justify-center mt-6 flex-wrap">
       {steps.map((step, i) => {
         const isActive = location.pathname === step.path;
         const isDone = steps.findIndex((s) => s.path === location.pathname) > i;
         return (
-          <div key={step.path} className="flex items-center gap-2">
+          <div key={step.path} className="flex items-center gap-1.5">
             <div
-              className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${
+              className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
                 isActive
                   ? "bg-white text-primary shadow-card"
                   : isDone
@@ -31,10 +56,10 @@ function Stepper() {
             >
               {step.idx}
             </div>
-            <span className={`text-sm font-semibold ${isActive ? "text-white" : "text-white/80"}`}>
+            <span className={`text-xs font-semibold ${isActive ? "text-white" : "text-white/80"}`}>
               {step.label}
             </span>
-            {i < steps.length - 1 && <div className="w-10 h-px bg-white/40" />}
+            {i < steps.length - 1 && <div className="w-6 h-px bg-white/40" />}
           </div>
         );
       })}
@@ -83,6 +108,11 @@ export default function App() {
             <Routes>
               <Route path="/" element={<InitialScreen />} />
               <Route path="/details" element={<DetailsScreen />} />
+              <Route path="/scope-source" element={<ScopeSourceScreen />} />
+              <Route path="/scope-editor" element={<ScopeEditorScreen />} />
+              <Route path="/gold-plating" element={<GoldPlatingScreen />} />
+              <Route path="/similarity" element={<SimilarityScreen />} />
+              <Route path="/scope-output" element={<ScopeOutputScreen />} />
               <Route path="/commercial" element={<CommercialScreen />} />
               <Route path="/review" element={<ReviewScreen />} />
             </Routes>

@@ -19,7 +19,7 @@ export default function InitialScreen() {
       setInitialDescription(input);
       setType(data.type);
       setParameters({});
-      navigate("/details");
+      navigate(data.type === "service" ? "/scope-source" : "/details");
     },
     onError: (err: Error) => {
       setError(err.message || "Failed to classify request");

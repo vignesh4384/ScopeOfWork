@@ -35,7 +35,9 @@ class AzureOpenAILLMProvider(LLMProvider):
                         {
                             "role": "system",
                             "content": (
-                                "Classify the request as either 'material' (tangible item) or 'service' (work performed). "
+                                "Classify the procurement request as 'material' (tangible goods/equipment to purchase) "
+                                "or 'service' (work performed by people — inspection, maintenance, consulting, construction, "
+                                "testing, monitoring, pigging, NDT, engineering, etc.). "
                                 "Reply with exactly one word: material or service."
                             ),
                         },
@@ -68,7 +70,16 @@ class AzureOpenAILLMProvider(LLMProvider):
     @staticmethod
     def _fallback_classify(prompt: str) -> str:
         lower = prompt.lower()
-        if any(word in lower for word in ["install", "consult", "support", "maintenance", "service"]):
+        service_keywords = [
+            "install", "consult", "support", "maintenance", "service",
+            "inspection", "inspect", "pigging", "monitoring", "survey",
+            "testing", "calibration", "repair", "overhaul", "cleaning",
+            "construction", "commissioning", "decommissioning", "demolition",
+            "audit", "assessment", "analysis", "ndt", "welding", "coating",
+            "scaffolding", "insulation", "transportation", "logistics",
+            "training", "engineering", "design", "study", "review",
+        ]
+        if any(word in lower for word in service_keywords):
             return "service"
         return "material"
 

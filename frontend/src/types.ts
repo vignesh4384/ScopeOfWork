@@ -63,4 +63,82 @@ export interface ItemDraft {
   initial_description: string;
   parameters: Record<string, unknown>;
   commercial: CommercialData;
+  scopeId?: number;
+  scopeOutputs?: ScopeOutputs;
+}
+
+// ---------------------------------------------------------------------------
+// Service Scope Flow types
+// ---------------------------------------------------------------------------
+
+export type OilGasSector = "upstream" | "midstream" | "downstream";
+
+export interface ScopeGenerateResponse {
+  scope_id: number;
+  raw_scope_text: string;
+}
+
+export interface ScopeUploadResponse {
+  scope_id: number;
+  raw_scope_text: string;
+  filename: string;
+}
+
+export interface ScopeRefineResponse {
+  refined_scope_text: string;
+  changes_summary: string;
+}
+
+export interface GoldPlatingFlaggedItem {
+  item: string;
+  reason: string;
+  recommendation: string;
+  severity: "high" | "medium" | "low";
+}
+
+export interface GoldPlatingResponse {
+  passed: boolean;
+  sector: string;
+  flagged_items: GoldPlatingFlaggedItem[];
+}
+
+export interface SimilarityMatch {
+  reference_id: number;
+  title: string;
+  score: number;
+  matching_sections: string[];
+}
+
+export interface SimilarityResponse {
+  matches: SimilarityMatch[];
+}
+
+export interface BoQLineItem {
+  item: string;
+  quantity: number;
+  unit: string;
+  estimated_cost: number;
+}
+
+export interface ScopeOutputs {
+  detailed_scope: string;
+  executive_summary: string;
+  bill_of_quantities: BoQLineItem[];
+}
+
+export interface ServiceScopeRead {
+  id: number;
+  purchase_request_id?: number;
+  status: string;
+  source_type: string;
+  initial_description: string;
+  raw_scope_text: string;
+  refined_scope_text?: string;
+  oil_gas_sector?: string;
+  gold_plating_report?: Record<string, unknown>;
+  gold_plating_passed?: boolean;
+  similarity_results?: Record<string, unknown>;
+  detailed_scope?: string;
+  executive_summary?: string;
+  bill_of_quantities?: Record<string, unknown>;
 }
