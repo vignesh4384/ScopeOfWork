@@ -96,7 +96,7 @@ export default function SimilarityScreen() {
                   <div>
                     <h4 className="font-semibold text-gray-800">{match.title}</h4>
                     <p className="text-xs text-gray-500">
-                      {(match as Record<string, unknown>).source === "contract_intelligence"
+                      {(match as unknown as Record<string, unknown>).source === "contract_intelligence"
                         ? "Contract Intelligence"
                         : "SOW Reference"}{" "}
                       &middot; ID: {match.reference_id}

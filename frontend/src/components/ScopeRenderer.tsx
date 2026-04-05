@@ -3,6 +3,7 @@
  * Handles: headings (#, ##, ###, ####), bold (**text**), bullet points (- / *),
  * horizontal rules (---), and regular paragraphs.
  */
+import type { ReactElement } from "react";
 
 interface ScopeRendererProps {
   text: string;
@@ -63,8 +64,8 @@ function parseBlocks(text: string): ParsedBlock[] {
 }
 
 /** Convert **bold** markers to <strong> tags */
-function renderInline(text: string): (string | JSX.Element)[] {
-  const parts: (string | JSX.Element)[] = [];
+function renderInline(text: string): (string | ReactElement)[] {
+  const parts: (string | ReactElement)[] = [];
   const regex = /\*\*(.+?)\*\*/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
