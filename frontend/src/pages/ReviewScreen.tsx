@@ -50,12 +50,11 @@ export default function ReviewScreen() {
     navigate("/");
   };
 
-  const tenderingUrl = (import.meta.env.VITE_TENDERING_URL as string | undefined)?.trim() || '';
-
   const handleSendToTendering = () => {
-    if (!tenderingUrl || !state.items.length) return;
-    const payload = btoa(JSON.stringify(state.items));
-    window.location.href = `${tenderingUrl}/sourcing?sow=${payload}`;
+    if (!state.items.length) return;
+    // Navigate the parent window (Autonomous Sourcing) to the tendering/sourcing page
+    const target = window.parent !== window ? window.parent : window;
+    target.location.href = "/sourcing";
   };
 
   const renderCostCodes = (item: ItemDraft) => {
@@ -88,7 +87,7 @@ export default function ReviewScreen() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-primary">Step 4 · Review</p>
+          <p className="text-sm font-semibold text-primary">Review</p>
           <h2 className="mt-1 text-2xl font-semibold text-gray-900">Review & submit</h2>
           <p className="text-sm text-muted">Confirm items, pricing, and cost codes. Add or remove before submitting.</p>
         </div>
@@ -153,7 +152,14 @@ export default function ReviewScreen() {
         >
           Add another item
         </button>
-        {tenderingUrl ? (
+        <div className="flex gap-3">
+          <button
+            onClick={handleSubmitAll}
+            disabled={submitting || !state.items.length}
+            className="rounded-full border border-primary/50 px-6 py-3 text-sm font-semibold text-primary hover:bg-primary/5 disabled:opacity-60"
+          >
+            {submitting ? "Submitting..." : "Send to SAP"}
+          </button>
           <button
             onClick={handleSendToTendering}
             disabled={!state.items.length}
@@ -161,15 +167,7 @@ export default function ReviewScreen() {
           >
             Send to Tendering
           </button>
-        ) : (
-          <button
-            onClick={handleSubmitAll}
-            disabled={submitting || !state.items.length}
-            className="rounded-full bg-primary px-6 py-3 text-white font-semibold shadow-card transition hover:translate-y-[-1px] hover:shadow-lg disabled:opacity-60"
-          >
-            {submitting ? "Submitting..." : "Submit all"}
-          </button>
-        )}
+        </div>
       </div>
     </div>
   );
