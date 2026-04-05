@@ -10,9 +10,9 @@ export default function CommercialScreen() {
   const [form, setForm] = useState({
     need_by_date: "",
     budget_type: "CAPEX",
-    wbs: "",
-    cost_center: "",
-    gl_account: "",
+    wbs: "111.12.1130.11",
+    cost_center: "711010020",
+    gl_account: "60102020",
     estimate_price: "",
     quantity: "1",
     currency: "USD",
@@ -109,7 +109,15 @@ export default function CommercialScreen() {
                     name="budget"
                     value={type}
                     checked={form.budget_type === type}
-                    onChange={() => update("budget_type", type)}
+                    onChange={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        budget_type: type,
+                        wbs: type === "CAPEX" ? "111.12.1130.11" : "",
+                        cost_center: type === "OPEX" ? "711010020" : "",
+                        gl_account: "60102020",
+                      }))
+                    }
                   />
                   <span className="text-sm font-semibold text-gray-800">{type}</span>
                 </label>
