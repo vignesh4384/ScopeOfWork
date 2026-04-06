@@ -13,7 +13,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <WizardProvider>
-        <BrowserRouter>
+        <BrowserRouter basename="/sow-app">
           <App />
         </BrowserRouter>
       </WizardProvider>

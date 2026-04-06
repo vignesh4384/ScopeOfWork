@@ -9,7 +9,7 @@ env:
   AZURE_WEBAPP_NAME: SOWComposer
   PYTHON_VERSION: '3.12'
   VITE_API_URL: ""
-  VITE_SOW_AGENT_URL: https://sowcomposer-e5hzeadgfwbpfdhd.eastus-01.azurewebsites.net
+  VITE_SOW_AGENT_URL: ""
 
 jobs:
   build-and-deploy:
