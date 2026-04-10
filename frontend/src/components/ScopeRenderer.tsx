@@ -1,7 +1,7 @@
 /**
  * Renders LLM markdown-like scope text as properly formatted HTML.
  * Handles: headings (#, ##, ###, ####), bold (**text**), bullet points (- / *),
- * horizontal rules (---), and regular paragraphs.
+ * horizontal rules (---), pipe tables, and regular paragraphs.
  */
 import type { ReactElement } from "react";
 
@@ -11,42 +11,89 @@ interface ScopeRendererProps {
 }
 
 interface ParsedBlock {
-  type: "h1" | "h2" | "h3" | "h4" | "bullet" | "hr" | "paragraph" | "blank";
+  type: "h1" | "h2" | "h3" | "h4" | "bullet" | "hr" | "paragraph" | "blank" | "table";
   content: string;
   indent?: number;
+  header?: string[];
+  rows?: string[][];
+}
+
+/** True if the line looks like a markdown table row: starts AND ends with a pipe. */
+function isTableRow(line: string): boolean {
+  const t = line.trim();
+  return t.startsWith("|") && t.endsWith("|") && t.length > 2;
+}
+
+/** Split a `| a | b | c |` row into trimmed cells, dropping outer pipes. */
+function parseTableCells(line: string): string[] {
+  const t = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return t.split("|").map((c) => c.trim());
+}
+
+/** True if the line is a separator row like `|---|:--:|---:|`. */
+function isTableSeparator(line: string): boolean {
+  if (!isTableRow(line)) return false;
+  const cells = parseTableCells(line);
+  if (cells.length === 0) return false;
+  return cells.every((c) => /^:?-{2,}:?$/.test(c));
 }
 
 function parseBlocks(text: string): ParsedBlock[] {
   const lines = text.split("\n");
   const blocks: ParsedBlock[] = [];
 
-  for (const line of lines) {
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
     const trimmed = line.trim();
+
+    // Table: a pipe row immediately followed by a separator row
+    if (
+      isTableRow(line) &&
+      i + 1 < lines.length &&
+      isTableSeparator(lines[i + 1])
+    ) {
+      const header = parseTableCells(line);
+      const rows: string[][] = [];
+      i += 2; // skip header + separator
+      while (i < lines.length && isTableRow(lines[i])) {
+        rows.push(parseTableCells(lines[i]));
+        i++;
+      }
+      blocks.push({ type: "table", content: "", header, rows });
+      continue;
+    }
 
     if (trimmed === "") {
       blocks.push({ type: "blank", content: "" });
+      i++;
       continue;
     }
 
     if (/^-{3,}$/.test(trimmed) || /^\*{3,}$/.test(trimmed)) {
       blocks.push({ type: "hr", content: "" });
+      i++;
       continue;
     }
 
     if (trimmed.startsWith("#### ")) {
       blocks.push({ type: "h4", content: trimmed.replace(/^####\s*/, "") });
+      i++;
       continue;
     }
     if (trimmed.startsWith("### ")) {
       blocks.push({ type: "h3", content: trimmed.replace(/^###\s*/, "") });
+      i++;
       continue;
     }
     if (trimmed.startsWith("## ")) {
       blocks.push({ type: "h2", content: trimmed.replace(/^##\s*/, "") });
+      i++;
       continue;
     }
     if (trimmed.startsWith("# ")) {
       blocks.push({ type: "h1", content: trimmed.replace(/^#\s*/, "") });
+      i++;
       continue;
     }
 
@@ -54,10 +101,12 @@ function parseBlocks(text: string): ParsedBlock[] {
       const indent = line.search(/\S/);
       const content = trimmed.replace(/^[-*]\s+/, "");
       blocks.push({ type: "bullet", content, indent: indent > 2 ? 1 : 0 });
+      i++;
       continue;
     }
 
     blocks.push({ type: "paragraph", content: trimmed });
+    i++;
   }
 
   return blocks;
@@ -144,6 +193,44 @@ export default function ScopeRenderer({ text, className = "" }: ScopeRendererPro
                 {renderInline(block.content)}
               </p>
             );
+          case "table": {
+            const header = block.header ?? [];
+            const rows = block.rows ?? [];
+            return (
+              <div key={idx} className="my-3 overflow-x-auto">
+                <table className="min-w-full border-collapse border border-gray-300 text-xs">
+                  {header.length > 0 && (
+                    <thead className="bg-primary/5">
+                      <tr>
+                        {header.map((cell, j) => (
+                          <th
+                            key={j}
+                            className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-gray-800 whitespace-nowrap"
+                          >
+                            {renderInline(cell)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                  )}
+                  <tbody>
+                    {rows.map((row, r) => (
+                      <tr key={r} className={r % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        {row.map((cell, c) => (
+                          <td
+                            key={c}
+                            className="border border-gray-300 px-2 py-1 text-gray-700 align-top"
+                          >
+                            {renderInline(cell)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          }
         }
       })}
     </div>
