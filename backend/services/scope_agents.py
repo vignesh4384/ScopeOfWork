@@ -649,16 +649,15 @@ async def construct_outputs(
         {"role": "user", "content": refined_scope},
     ]
 
-    # Run sequentially to avoid rate limiting
+    # Run the three LLM calls in parallel — they're independent and the three
+    # prompts don't share any intermediate data. This cuts wall-clock from
+    # ~3×_LLM_TIMEOUT down to ~max(_LLM_TIMEOUT). 3 concurrent requests is
+    # well within Anthropic's per-minute rate limits for a single user.
     try:
-        detailed_raw = await asyncio.wait_for(
-            provider.generate(detailed_messages), timeout=_LLM_TIMEOUT
-        )
-        summary_raw = await asyncio.wait_for(
-            provider.generate(summary_messages), timeout=_LLM_TIMEOUT
-        )
-        boq_raw = await asyncio.wait_for(
-            provider.generate(boq_messages), timeout=_LLM_TIMEOUT
+        detailed_raw, summary_raw, boq_raw = await asyncio.gather(
+            asyncio.wait_for(provider.generate(detailed_messages), timeout=_LLM_TIMEOUT),
+            asyncio.wait_for(provider.generate(summary_messages), timeout=_LLM_TIMEOUT),
+            asyncio.wait_for(provider.generate(boq_messages), timeout=_LLM_TIMEOUT),
         )
 
         # Parse BoQ JSON
