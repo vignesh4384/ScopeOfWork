@@ -93,7 +93,6 @@ export default function ScopeEditorScreen() {
 
     try {
       let finalScope = "";
-      let finalReply = "";
       let finalChanges = "";
       let finalRevNum = 0;
 
@@ -107,7 +106,6 @@ export default function ScopeEditorScreen() {
           setStreamText((prev) => prev + event.text);
         } else if (event.type === "done") {
           finalScope = event.scope_document;
-          finalReply = event.agent_reply;
           finalChanges = event.changes_summary;
           setStreaming(false);
         } else if (event.type === "saved") {
