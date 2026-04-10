@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -127,3 +128,68 @@ class ScopeReferenceRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --------------- Chat Refinement ---------------
+
+class ChatStartResponse(BaseModel):
+    session_id: str
+    scope_id: int
+    revision_number: int
+    scope_document: str
+
+
+class ChatMessageRequest(BaseModel):
+    session_id: str
+    message: str = Field(..., min_length=1)
+    edited_scope: Optional[str] = None
+
+
+class ChatMessageResponse(BaseModel):
+    revision_number: int
+    scope_document: str
+    agent_reply: str
+    changes_summary: str
+
+
+class ChatRevisionSummary(BaseModel):
+    revision_number: int
+    user_instruction: str
+    agent_reply: str
+    changes_summary: Optional[str] = None
+    created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChatRevisionDetail(BaseModel):
+    revision_number: int
+    user_instruction: str
+    agent_reply: str
+    changes_summary: Optional[str] = None
+    scope_document: str
+    created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChatHistoryResponse(BaseModel):
+    session_id: str
+    scope_id: int
+    status: str
+    revisions: List[ChatRevisionSummary] = []
+
+
+class SessionListItem(BaseModel):
+    session_id: str
+    service_scope_id: int
+    title: str
+    status: str
+    revision_count: int
+    turn_count: int
+    word_count: int
+    scope_snippet: str
+    last_revision_at: datetime.datetime
+    sector: Optional[str] = None

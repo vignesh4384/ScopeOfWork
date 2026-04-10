@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 from typing import Optional
 
-from sqlalchemy import Column, JSON, Text
+from sqlalchemy import Column, ForeignKey, JSON, String, Text
 from sqlmodel import Field, SQLModel
 
 
@@ -78,5 +78,64 @@ class ScopeSimilarityLog(SQLModel, table=True):
     similarity_score: float = 0.0
     matching_sections: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     created_at: datetime.datetime = Field(
+        default_factory=datetime.datetime.utcnow, nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Chat-based Multi-Revision Refinement tables
+# ---------------------------------------------------------------------------
+
+
+class ScopeSession(SQLModel, table=True):
+    """A conversational refinement session attached to a ServiceScope."""
+
+    session_id: str = Field(
+        sa_column=Column(String(64), primary_key=True)
+    )  # UUID
+    service_scope_id: int = Field(foreign_key="servicescope.id")
+    title: str = Field(default="", sa_column=Column(String(255)))
+    status: str = Field(default="active", sa_column=Column(String(32)))  # active | finalised
+    created_at: datetime.datetime = Field(
+        default_factory=datetime.datetime.utcnow, nullable=False
+    )
+
+
+class ScopeRevision(SQLModel, table=True):
+    """One turn in a chat session — full scope snapshot at this point."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(
+        sa_column=Column(
+            String(64),
+            ForeignKey("scopesession.session_id"),
+            index=True,
+            nullable=False,
+        )
+    )
+    revision_number: int
+    user_instruction: str = Field(default="", sa_column=Column(Text))
+    agent_reply: str = Field(default="", sa_column=Column(Text))
+    scope_document: str = Field(default="", sa_column=Column(Text))
+    changes_summary: Optional[str] = Field(default=None, sa_column=Column(Text))
+    tokens_estimate: int = 0
+    created_at: datetime.datetime = Field(
+        default_factory=datetime.datetime.utcnow, nullable=False
+    )
+
+
+class ScopeIntentSummary(SQLModel, table=True):
+    """Compressed narrative of older conversation turns to keep LLM context bounded."""
+
+    session_id: str = Field(
+        sa_column=Column(
+            String(64),
+            ForeignKey("scopesession.session_id"),
+            primary_key=True,
+        )
+    )
+    summary: str = Field(default="", sa_column=Column(Text))
+    covers_up_to_revision: int = 0
+    updated_at: datetime.datetime = Field(
         default_factory=datetime.datetime.utcnow, nullable=False
     )

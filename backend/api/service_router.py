@@ -5,18 +5,34 @@ All endpoints are prefixed with /api/service (set in main.py).
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
+import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from sqlalchemy import select, text
+from fastapi.responses import StreamingResponse
+from sqlalchemy import desc, func, select, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from db import get_session
-from models import ScopeReference, ScopeSimilarityLog, ServiceScope
+import config
+from db import async_session, get_session
+from models import (
+    ScopeIntentSummary,
+    ScopeReference,
+    ScopeRevision,
+    ScopeSession,
+    ScopeSimilarityLog,
+    ServiceScope,
+)
 from schemas_service import (
     BoQLineItem,
+    ChatHistoryResponse,
+    ChatMessageRequest,
+    ChatMessageResponse,
+    ChatRevisionSummary,
+    ChatStartResponse,
     GoldPlatingCheckRequest,
     GoldPlatingFlaggedItem,
     GoldPlatingResponse,
@@ -29,12 +45,28 @@ from schemas_service import (
     ScopeRefineResponse,
     ScopeUploadResponse,
     ServiceScopeRead,
+    SessionListItem,
     SimilarityMatch,
     SimilarityResponse,
 )
+from services.context_builder import should_summarise
+from services.db_helpers import (
+    get_active_session_for_scope,
+    get_all_revisions,
+    get_current_scope,
+    get_intent_summary,
+    get_latest_revision_number,
+    get_recent_turns,
+    save_revision,
+    scope_snippet,
+    word_count,
+)
 from services.scope_agents import (
+    chat_refine_scope,
+    chat_refine_scope_stream,
     check_gold_plating,
     compare_similarity,
+    compress_intent_summary,
     construct_outputs,
     extract_scope_from_file,
     generate_embedding,
@@ -356,3 +388,450 @@ async def api_create_reference(
     await session.commit()
     await session.refresh(ref)
     return ref
+
+
+# ---------------------------------------------------------------------------
+# Chat-based Multi-Revision Refinement
+# ---------------------------------------------------------------------------
+
+
+async def _maybe_compress_summary(session_id: str) -> None:
+    """Background task: compress older turns into intent summary."""
+    try:
+        async with async_session() as bg_session:
+            revisions = await get_all_revisions(bg_session, session_id)
+            if len(revisions) < config.settings.recent_turns_window:
+                return
+
+            existing = await bg_session.get(ScopeIntentSummary, session_id)
+            covered_up_to = existing.covers_up_to_revision if existing else 0
+
+            keep_recent = config.settings.recent_turns_window
+            cutoff_index = max(0, len(revisions) - keep_recent)
+            to_compress = [
+                r for r in revisions[:cutoff_index]
+                if r.revision_number > covered_up_to and r.user_instruction
+            ]
+            if not to_compress:
+                return
+
+            older_turns = [
+                (r.user_instruction, r.agent_reply, r.changes_summary)
+                for r in to_compress
+            ]
+            new_summary_text = await compress_intent_summary(
+                existing.summary if existing else None,
+                older_turns,
+            )
+
+            new_covers = to_compress[-1].revision_number
+            if existing:
+                existing.summary = new_summary_text
+                existing.covers_up_to_revision = new_covers
+                existing.updated_at = datetime.datetime.utcnow()
+                bg_session.add(existing)
+            else:
+                bg_session.add(
+                    ScopeIntentSummary(
+                        session_id=session_id,
+                        summary=new_summary_text,
+                        covers_up_to_revision=new_covers,
+                    )
+                )
+            await bg_session.commit()
+    except Exception as exc:
+        print(f"[_maybe_compress_summary] failed for {session_id}: {exc}")
+
+
+@router.post("/scope/{scope_id}/chat/start", response_model=ChatStartResponse)
+async def api_chat_start(
+    scope_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Idempotent: returns the existing active session if any, else creates one."""
+    scope = await session.get(ServiceScope, scope_id)
+    if not scope:
+        raise HTTPException(status_code=404, detail="Scope not found")
+
+    existing = await get_active_session_for_scope(session, scope_id)
+    if existing:
+        # Return the latest revision's scope document
+        result = await session.execute(
+            select(ScopeRevision)
+            .where(ScopeRevision.session_id == existing.session_id)
+            .order_by(ScopeRevision.revision_number.desc())
+            .limit(1)
+        )
+        latest = result.scalars().first()
+        return ChatStartResponse(
+            session_id=existing.session_id,
+            scope_id=scope_id,
+            revision_number=latest.revision_number if latest else 1,
+            scope_document=latest.scope_document if latest else (scope.refined_scope_text or scope.raw_scope_text),
+        )
+
+    session_id = str(uuid.uuid4())
+    title = (scope.initial_description or "Untitled Scope").strip()[:120] or "Untitled Scope"
+    chat_session = ScopeSession(
+        session_id=session_id,
+        service_scope_id=scope_id,
+        title=title,
+        status="active",
+    )
+    session.add(chat_session)
+    await session.flush()  # ensure parent row exists before child FK insert
+
+    initial_scope = scope.refined_scope_text or scope.raw_scope_text or ""
+    revision = ScopeRevision(
+        session_id=session_id,
+        revision_number=1,
+        user_instruction="",
+        agent_reply="Initial scope generated.",
+        scope_document=initial_scope,
+        changes_summary=None,
+        tokens_estimate=word_count(initial_scope),
+    )
+    session.add(revision)
+
+    # Keep ServiceScope.refined_scope_text in sync with the latest revision
+    scope.refined_scope_text = initial_scope
+    scope.updated_at = datetime.datetime.utcnow()
+    session.add(scope)
+
+    await session.commit()
+    return ChatStartResponse(
+        session_id=session_id,
+        scope_id=scope_id,
+        revision_number=1,
+        scope_document=initial_scope,
+    )
+
+
+@router.post("/scope/{scope_id}/chat/message", response_model=ChatMessageResponse)
+async def api_chat_message(
+    scope_id: int,
+    body: ChatMessageRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    scope = await session.get(ServiceScope, scope_id)
+    if not scope:
+        raise HTTPException(status_code=404, detail="Scope not found")
+
+    chat_session = await session.get(ScopeSession, body.session_id)
+    if not chat_session or chat_session.service_scope_id != scope_id:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    # Latest revision number
+    latest_rev_num = await get_latest_revision_number(session, body.session_id)
+    next_rev_num = latest_rev_num + 1
+
+    # Get current scope (honor optional edited_scope override)
+    current_scope = await get_current_scope(session, body.session_id, scope, body.edited_scope)
+
+    # Load intent summary
+    intent_text = await get_intent_summary(session, body.session_id)
+
+    # Load recent turns (only those with a user_instruction; seed revision excluded)
+    recent_turns = await get_recent_turns(session, body.session_id)
+
+    result_data = await chat_refine_scope(
+        current_scope=current_scope,
+        revision_number=latest_rev_num,
+        intent_summary=intent_text,
+        recent_turns=recent_turns,
+        user_message=body.message,
+    )
+
+    new_scope_doc = result_data["scope_document"]
+    agent_reply = result_data["agent_reply"]
+    changes_summary = result_data["changes_summary"]
+
+    await save_revision(
+        session,
+        session_id=body.session_id,
+        revision_number=next_rev_num,
+        user_instruction=body.message,
+        agent_reply=agent_reply,
+        scope_document=new_scope_doc,
+        changes_summary=changes_summary,
+    )
+
+    # Sync ServiceScope.refined_scope_text with latest revision
+    scope.refined_scope_text = new_scope_doc
+    scope.status = "refined"
+    scope.updated_at = datetime.datetime.utcnow()
+    session.add(scope)
+
+    await session.commit()
+
+    # Fire-and-forget compression
+    if should_summarise(next_rev_num):
+        asyncio.create_task(_maybe_compress_summary(body.session_id))
+
+    return ChatMessageResponse(
+        revision_number=next_rev_num,
+        scope_document=new_scope_doc,
+        agent_reply=agent_reply,
+        changes_summary=changes_summary,
+    )
+
+
+@router.post("/scope/{scope_id}/chat/stream")
+async def api_chat_message_stream(
+    scope_id: int,
+    body: ChatMessageRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """SSE streaming version of chat message. Returns text/event-stream."""
+    scope = await session.get(ServiceScope, scope_id)
+    if not scope:
+        raise HTTPException(status_code=404, detail="Scope not found")
+
+    chat_session = await session.get(ScopeSession, body.session_id)
+    if not chat_session or chat_session.service_scope_id != scope_id:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    latest_rev_num = await get_latest_revision_number(session, body.session_id)
+    next_rev_num = latest_rev_num + 1
+    current_scope = await get_current_scope(session, body.session_id, scope, body.edited_scope)
+    intent_text = await get_intent_summary(session, body.session_id)
+    recent_turns = await get_recent_turns(session, body.session_id)
+
+    async def event_generator():
+        final_data = None
+        try:
+            async for sse_chunk in chat_refine_scope_stream(
+                current_scope=current_scope,
+                revision_number=latest_rev_num,
+                intent_summary=intent_text,
+                recent_turns=recent_turns,
+                user_message=body.message,
+            ):
+                yield sse_chunk
+                # Capture the final "done" event
+                if '"type": "done"' in sse_chunk or '"type":"done"' in sse_chunk:
+                    import json as _json
+                    data_line = sse_chunk.strip().removeprefix("data: ")
+                    try:
+                        final_data = _json.loads(data_line)
+                    except Exception:
+                        pass
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+            return
+
+        # Save revision to DB after stream completes
+        if final_data and final_data.get("scope_document"):
+            try:
+                async with async_session() as bg_session:
+                    bg_scope = await bg_session.get(ServiceScope, scope_id)
+                    await save_revision(
+                        bg_session,
+                        session_id=body.session_id,
+                        revision_number=next_rev_num,
+                        user_instruction=body.message,
+                        agent_reply=final_data.get("agent_reply", "Scope updated."),
+                        scope_document=final_data["scope_document"],
+                        changes_summary=final_data.get("changes_summary"),
+                    )
+                    if bg_scope:
+                        bg_scope.refined_scope_text = final_data["scope_document"]
+                        bg_scope.status = "refined"
+                        bg_scope.updated_at = datetime.datetime.utcnow()
+                        bg_session.add(bg_scope)
+                    await bg_session.commit()
+
+                if should_summarise(next_rev_num):
+                    asyncio.create_task(_maybe_compress_summary(body.session_id))
+
+                # Send final revision confirmation
+                yield f"data: {json.dumps({'type': 'saved', 'revision_number': next_rev_num})}\n\n"
+            except Exception as exc:
+                yield f"data: {json.dumps({'type': 'error', 'detail': f'Failed to save revision: {exc}'})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/scope/{scope_id}/chat/history", response_model=ChatHistoryResponse)
+async def api_chat_history(
+    scope_id: int,
+    session_id: str = Query(...),
+    session: AsyncSession = Depends(get_session),
+):
+    chat_session = await session.get(ScopeSession, session_id)
+    if not chat_session or chat_session.service_scope_id != scope_id:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    result = await session.execute(
+        select(ScopeRevision)
+        .where(ScopeRevision.session_id == session_id)
+        .order_by(ScopeRevision.revision_number.asc())
+    )
+    revs = result.scalars().all()
+    return ChatHistoryResponse(
+        session_id=session_id,
+        scope_id=scope_id,
+        status=chat_session.status,
+        revisions=[
+            ChatRevisionSummary(
+                revision_number=r.revision_number,
+                user_instruction=r.user_instruction,
+                agent_reply=r.agent_reply,
+                changes_summary=r.changes_summary,
+                created_at=r.created_at,
+            )
+            for r in revs
+        ],
+    )
+
+
+@router.get("/scope/{scope_id}/chat/revision/{revision_number}")
+async def api_chat_get_revision(
+    scope_id: int,
+    revision_number: int,
+    session_id: str = Query(...),
+    session: AsyncSession = Depends(get_session),
+):
+    """Return the full scope_document for a specific revision (read-only view)."""
+    chat_session = await session.get(ScopeSession, session_id)
+    if not chat_session or chat_session.service_scope_id != scope_id:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    result = await session.execute(
+        select(ScopeRevision)
+        .where(ScopeRevision.session_id == session_id)
+        .where(ScopeRevision.revision_number == revision_number)
+    )
+    rev = result.scalars().first()
+    if not rev:
+        raise HTTPException(status_code=404, detail="Revision not found")
+    return {
+        "revision_number": rev.revision_number,
+        "scope_document": rev.scope_document,
+        "user_instruction": rev.user_instruction,
+        "agent_reply": rev.agent_reply,
+        "changes_summary": rev.changes_summary,
+    }
+
+
+@router.post("/scope/{scope_id}/chat/revert/{revision_number}", response_model=ChatMessageResponse)
+async def api_chat_revert(
+    scope_id: int,
+    revision_number: int,
+    session_id: str = Query(...),
+    session: AsyncSession = Depends(get_session),
+):
+    scope = await session.get(ServiceScope, scope_id)
+    if not scope:
+        raise HTTPException(status_code=404, detail="Scope not found")
+    chat_session = await session.get(ScopeSession, session_id)
+    if not chat_session or chat_session.service_scope_id != scope_id:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    # Find the target revision
+    result = await session.execute(
+        select(ScopeRevision)
+        .where(ScopeRevision.session_id == session_id)
+        .where(ScopeRevision.revision_number == revision_number)
+    )
+    target = result.scalars().first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Revision not found")
+
+    # Latest revision number
+    result = await session.execute(
+        select(func.max(ScopeRevision.revision_number)).where(
+            ScopeRevision.session_id == session_id
+        )
+    )
+    next_rev_num = (result.scalar() or 0) + 1
+
+    new_revision = ScopeRevision(
+        session_id=session_id,
+        revision_number=next_rev_num,
+        user_instruction=f"[Reverted to revision {revision_number}]",
+        agent_reply=f"Reverted to revision {revision_number}.",
+        scope_document=target.scope_document,
+        changes_summary=f"Reverted scope to the state of revision {revision_number}.",
+        tokens_estimate=word_count(target.scope_document),
+    )
+    session.add(new_revision)
+
+    scope.refined_scope_text = target.scope_document
+    scope.updated_at = datetime.datetime.utcnow()
+    session.add(scope)
+    await session.commit()
+
+    return ChatMessageResponse(
+        revision_number=next_rev_num,
+        scope_document=target.scope_document,
+        agent_reply=new_revision.agent_reply,
+        changes_summary=new_revision.changes_summary or "",
+    )
+
+
+@router.post("/scope/{scope_id}/chat/finalise")
+async def api_chat_finalise(
+    scope_id: int,
+    session_id: str = Query(...),
+    session: AsyncSession = Depends(get_session),
+):
+    chat_session = await session.get(ScopeSession, session_id)
+    if not chat_session or chat_session.service_scope_id != scope_id:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    chat_session.status = "finalised"
+    session.add(chat_session)
+    await session.commit()
+    return {"session_id": session_id, "status": "finalised"}
+
+
+@router.get("/sessions", response_model=List[SessionListItem])
+async def api_list_sessions(
+    session: AsyncSession = Depends(get_session),
+):
+    """List all chat sessions with rich metadata for the landing-page resume cards."""
+    # Pull all sessions
+    result = await session.execute(
+        select(ScopeSession).order_by(ScopeSession.created_at.desc())
+    )
+    sessions = result.scalars().all()
+
+    items: list[SessionListItem] = []
+    for s in sessions:
+        # Count revisions for this session
+        rev_result = await session.execute(
+            select(ScopeRevision)
+            .where(ScopeRevision.session_id == s.session_id)
+            .order_by(ScopeRevision.revision_number.desc())
+        )
+        revs = rev_result.scalars().all()
+        if not revs:
+            continue
+        latest = revs[0]
+        revision_count = len(revs)
+        # turn count = number of revisions with a user_instruction (excludes seed)
+        turn_count = sum(1 for r in revs if r.user_instruction and not r.user_instruction.startswith("[Reverted"))
+
+        scope_obj = await session.get(ServiceScope, s.service_scope_id)
+        sector = scope_obj.oil_gas_sector if scope_obj else None
+
+        items.append(
+            SessionListItem(
+                session_id=s.session_id,
+                service_scope_id=s.service_scope_id,
+                title=s.title or "Untitled Scope",
+                status=s.status,
+                revision_count=revision_count,
+                turn_count=turn_count,
+                word_count=word_count(latest.scope_document),
+                scope_snippet=scope_snippet(latest.scope_document),
+                last_revision_at=latest.created_at,
+                sector=sector,
+            )
+        )
+
+    items.sort(key=lambda x: x.last_revision_at, reverse=True)
+    return items

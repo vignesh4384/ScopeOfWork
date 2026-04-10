@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-3-sonnet-20240229"
     provider_preference: str = "anthropic"  # options: anthropic|azure
+    # Chat refinement settings
+    recent_turns_window: int = 3
+    summary_trigger_every: int = 3
+    chat_llm_timeout: int = 150
+    chat_max_tokens: int = 16000
     # Database — Azure SQL (free tier) or SQLite fallback
     database_url: str = "sqlite+aiosqlite:///data/app.db"
     allow_origins: str = "http://localhost:5173,http://localhost:5174,https://sowcomposer-e5hzeadgfwbpfdhd.eastus-01.azurewebsites.net"

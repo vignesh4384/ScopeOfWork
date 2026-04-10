@@ -24,6 +24,7 @@ type WizardState = {
   goldPlatingReport?: GoldPlatingResponse;
   similarityResults?: SimilarityMatch[];
   scopeOutputs?: ScopeOutputs;
+  chatSessionId?: string;
 };
 
 type WizardContextType = {
@@ -44,6 +45,7 @@ type WizardContextType = {
   setGoldPlatingReport: (report: GoldPlatingResponse) => void;
   setSimilarityResults: (results: SimilarityMatch[]) => void;
   setScopeOutputs: (outputs: ScopeOutputs) => void;
+  setChatSessionId: (id: string | undefined) => void;
 };
 
 const WizardContext = createContext<WizardContextType | undefined>(undefined);
@@ -103,6 +105,8 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const setSimilarityResults = (similarityResults: SimilarityMatch[]) =>
     setState((prev) => ({ ...prev, similarityResults }));
   const setScopeOutputs = (scopeOutputs: ScopeOutputs) => setState((prev) => ({ ...prev, scopeOutputs }));
+  const setChatSessionId = (chatSessionId: string | undefined) =>
+    setState((prev) => ({ ...prev, chatSessionId }));
 
   return (
     <WizardContext.Provider
@@ -123,6 +127,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setGoldPlatingReport,
         setSimilarityResults,
         setScopeOutputs,
+        setChatSessionId,
       }}
     >
       {children}

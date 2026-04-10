@@ -20,15 +20,43 @@ import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 import config
 from llm_providers.factory import get_provider
+from services.context_builder import (
+    SCOPE_UPDATE_TOOL,
+    SCOPE_UPDATE_TOOL_CHOICE,
+    build_claude_context,
+)
 
 provider = get_provider()
 
 _LLM_TIMEOUT = 60  # seconds – scope prompts are heavier than classification
 _TOP_N = 5  # number of candidates to retrieve via embedding before LLM comparison
+
+
+def _extract_delimited_block(raw: str, name: str) -> Optional[str]:
+    """Extract a block delimited by <<<NAME>>>...<<<END_NAME>>> markers.
+
+    If the end marker is missing (truncated response), fall back to taking
+    everything from the open marker to the next known delimiter or EOF.
+    """
+    pattern = rf"<<<{name}>>>\s*\n?(.*?)\n?\s*<<<END_{name}>>>"
+    m = re.search(pattern, raw, re.S)
+    if m:
+        return m.group(1).strip()
+    # Fallback: open marker without close — take from open marker to next
+    # delimiter or end of string.
+    open_pattern = rf"<<<{name}>>>\s*\n?"
+    om = re.search(open_pattern, raw)
+    if not om:
+        return None
+    rest = raw[om.end():]
+    next_marker = re.search(r"<<<[A-Z_]+>>>", rest)
+    if next_marker:
+        rest = rest[: next_marker.start()]
+    return rest.strip() or None
 
 
 def _extract_json(raw: str) -> Dict[str, Any]:
@@ -194,6 +222,158 @@ async def refine_scope(
         }
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Scope refinement failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# 3b. Chat-based Multi-Revision Refinement
+# ---------------------------------------------------------------------------
+
+
+@retry(
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=1, min=0.5, max=2),
+    retry=retry_if_not_exception_type(HTTPException),
+)
+async def chat_refine_scope(
+    current_scope: str,
+    revision_number: int,
+    intent_summary: Optional[str],
+    recent_turns: List[tuple],
+    user_message: str,
+) -> Dict[str, str]:
+    """Run a single chat-refinement turn against the LLM.
+
+    Returns dict with keys: scope_document, agent_reply, changes_summary.
+    """
+    if not provider.enabled:
+        raise HTTPException(status_code=503, detail="LLM provider not configured")
+
+    system_prompt, history_messages = build_claude_context(
+        current_scope=current_scope,
+        revision_number=revision_number,
+        intent_summary=intent_summary,
+        recent_turns=recent_turns,
+        use_tool_output=True,
+    )
+
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    messages.extend(history_messages)
+    messages.append({"role": "user", "content": user_message})
+
+    print(
+        f"[chat_refine_scope] rev={revision_number} "
+        f"system_chars={len(system_prompt)} history_msgs={len(history_messages)} "
+        f"user_chars={len(user_message)}"
+    )
+
+    try:
+        result = await provider.generate_structured(
+            messages,
+            tools=[SCOPE_UPDATE_TOOL],
+            tool_choice=SCOPE_UPDATE_TOOL_CHOICE,
+        )
+        scope_doc = result.get("scope_document", "")
+        if not scope_doc:
+            raise ValueError("LLM response missing scope_document in tool output")
+        return {
+            "scope_document": scope_doc,
+            "agent_reply": result.get("agent_reply", "Scope updated."),
+            "changes_summary": result.get("changes_summary", ""),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Chat refinement failed: {type(e).__name__}: {e}")
+
+
+async def chat_refine_scope_stream(
+    current_scope: str,
+    revision_number: int,
+    intent_summary: Optional[str],
+    recent_turns: List[tuple],
+    user_message: str,
+):
+    """Stream a chat-refinement turn. Yields SSE-formatted text chunks.
+
+    Uses delimiter-based output (not tool_use) because tool_use streams
+    JSON character-by-character which can't be meaningfully displayed.
+    The final result is parsed from delimiters after streaming completes.
+    """
+    if not provider.enabled:
+        raise HTTPException(status_code=503, detail="LLM provider not configured")
+
+    system_prompt, history_messages = build_claude_context(
+        current_scope=current_scope,
+        revision_number=revision_number,
+        intent_summary=intent_summary,
+        recent_turns=recent_turns,
+        use_tool_output=False,  # delimiters for streaming
+    )
+
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    messages.extend(history_messages)
+    messages.append({"role": "user", "content": user_message})
+
+    full_text = ""
+    async for chunk in provider.generate_stream(messages):
+        full_text += chunk
+        # Send text delta as SSE
+        yield f"data: {json.dumps({'type': 'delta', 'text': chunk})}\n\n"
+
+    # Parse delimiters from the complete response
+    scope_doc = _extract_delimited_block(full_text, "SCOPE_DOCUMENT")
+    agent_reply = _extract_delimited_block(full_text, "AGENT_REPLY")
+    changes_summary = _extract_delimited_block(full_text, "CHANGES_SUMMARY")
+
+    yield f"data: {json.dumps({'type': 'done', 'scope_document': scope_doc or full_text, 'agent_reply': agent_reply or 'Scope updated.', 'changes_summary': changes_summary or ''})}\n\n"
+
+
+@retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=0.5, max=2))
+async def compress_intent_summary(
+    existing_summary: Optional[str],
+    older_turns: List[tuple],  # list of (user_instruction, agent_reply, changes_summary)
+) -> str:
+    """Compress older conversation turns into a concise narrative (~200 words).
+
+    Called every 3 revisions to keep the context window bounded. Merges with
+    any existing summary so the narrative grows incrementally.
+    """
+    if not provider.enabled or not older_turns:
+        return existing_summary or ""
+
+    turns_text = ""
+    for idx, (user_instr, agent_reply, changes) in enumerate(older_turns, start=1):
+        turns_text += (
+            f"\n[Turn {idx}]\n"
+            f"User asked: {user_instr}\n"
+            f"Changes made: {changes or agent_reply}\n"
+        )
+
+    existing_block = (
+        f"\nEXISTING SUMMARY (extend this):\n{existing_summary}\n"
+        if existing_summary
+        else ""
+    )
+
+    prompt = (
+        "You are summarising a multi-turn scope-of-work refinement conversation. "
+        "Produce a concise narrative (~200 words) capturing the user's decisions, "
+        "intent, and the evolution of the scope. Focus on WHY the user made changes "
+        "(constraints, priorities) so a future model can interpret edge cases. "
+        "Do not list every edit verbatim — synthesize the direction of refinement."
+        f"{existing_block}\n"
+        f"NEW TURNS TO INCORPORATE:{turns_text}\n\n"
+        "Reply with just the narrative summary text, no preamble."
+    )
+
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": "Produce the updated narrative summary."},
+    ]
+    try:
+        raw = await asyncio.wait_for(provider.generate(messages), timeout=_LLM_TIMEOUT)
+        return raw.strip()
+    except Exception as e:
+        print(f"[compress_intent_summary] failed: {e}")
+        return existing_summary or ""
 
 
 # ---------------------------------------------------------------------------

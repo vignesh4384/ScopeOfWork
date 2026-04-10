@@ -142,3 +142,57 @@ export interface ServiceScopeRead {
   executive_summary?: string;
   bill_of_quantities?: Record<string, unknown>;
 }
+
+// ---------------------------------------------------------------------------
+// Chat Refinement types
+// ---------------------------------------------------------------------------
+
+export interface ChatStartResponse {
+  session_id: string;
+  scope_id: number;
+  revision_number: number;
+  scope_document: string;
+}
+
+export interface ChatMessageResponse {
+  revision_number: number;
+  scope_document: string;
+  agent_reply: string;
+  changes_summary: string;
+}
+
+export interface ChatRevisionSummary {
+  revision_number: number;
+  user_instruction: string;
+  agent_reply: string;
+  changes_summary?: string | null;
+  created_at: string;
+}
+
+export interface ChatHistoryResponse {
+  session_id: string;
+  scope_id: number;
+  status: string;
+  revisions: ChatRevisionSummary[];
+}
+
+export interface ChatRevisionDetail {
+  revision_number: number;
+  scope_document: string;
+  user_instruction: string;
+  agent_reply: string;
+  changes_summary?: string | null;
+}
+
+export interface SessionListItem {
+  session_id: string;
+  service_scope_id: number;
+  title: string;
+  status: string;
+  revision_count: number;
+  turn_count: number;
+  word_count: number;
+  scope_snippet: string;
+  last_revision_at: string;
+  sector?: string | null;
+}
