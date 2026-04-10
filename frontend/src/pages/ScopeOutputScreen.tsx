@@ -1,10 +1,23 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWizard } from "../context/WizardContext";
-import { constructOutputs } from "../api/client";
+import { constructOutputs, constructOutputsStream } from "../api/client";
 import { exportDetailedScopePDF, exportExecutiveSummaryPDF, exportBoQExcel } from "../utils/exportOutputs";
 import ScopeRenderer from "../components/ScopeRenderer";
 import type { BoQLineItem } from "../types";
+
+type StepStatus = "pending" | "running" | "done";
+interface Step {
+  key: string;
+  label: string;
+  status: StepStatus;
+}
+
+const DEFAULT_STEPS: Step[] = [
+  { key: "detailed_scope", label: "Building detailed scope of work", status: "running" },
+  { key: "executive_summary", label: "Writing executive summary", status: "running" },
+  { key: "bill_of_quantities", label: "Preparing bill of quantities", status: "running" },
+];
 
 type Tab = "detailed" | "summary" | "boq";
 
@@ -28,20 +41,66 @@ export default function ScopeOutputScreen() {
   const [boq, setBoq] = useState<BoQLineItem[]>([]);
   const [built, setBuilt] = useState(false);
   const [editing, setEditing] = useState<"detailed" | "summary" | null>(null);
+  const [steps, setSteps] = useState<Step[]>(DEFAULT_STEPS);
 
   const buildOutputs = async () => {
     if (!state.scopeId) return;
     setLoading(true);
     setError("");
+    setSteps(DEFAULT_STEPS.map((s) => ({ ...s, status: "running" })));
+
     try {
-      const res = await constructOutputs(state.scopeId);
-      setDetailedScope(res.detailed_scope);
-      setExecutiveSummary(res.executive_summary);
-      setBoq(res.bill_of_quantities);
-      setScopeOutputs(res);
-      setBuilt(true);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Output construction failed");
+      let detailed = "";
+      let summary = "";
+      let boqItems: BoQLineItem[] = [];
+
+      for await (const event of constructOutputsStream(state.scopeId)) {
+        if (event.type === "start") {
+          setSteps(
+            event.steps.map((s) => ({ key: s.key, label: s.label, status: "running" as StepStatus })),
+          );
+        } else if (event.type === "step_done") {
+          setSteps((prev) =>
+            prev.map((s) => (s.key === event.key ? { ...s, status: "done" as StepStatus } : s)),
+          );
+        } else if (event.type === "done") {
+          detailed = event.detailed_scope;
+          summary = event.executive_summary;
+          boqItems = event.bill_of_quantities;
+        } else if (event.type === "error") {
+          throw new Error(event.detail);
+        }
+      }
+
+      if (detailed) {
+        setDetailedScope(detailed);
+        setExecutiveSummary(summary);
+        setBoq(boqItems);
+        setScopeOutputs({
+          detailed_scope: detailed,
+          executive_summary: summary,
+          bill_of_quantities: boqItems,
+        });
+        setBuilt(true);
+      }
+    } catch (streamErr: unknown) {
+      // Fallback to non-streaming endpoint
+      try {
+        const res = await constructOutputs(state.scopeId);
+        setDetailedScope(res.detailed_scope);
+        setExecutiveSummary(res.executive_summary);
+        setBoq(res.bill_of_quantities);
+        setScopeOutputs(res);
+        setBuilt(true);
+      } catch (fallbackErr: unknown) {
+        const msg =
+          fallbackErr instanceof Error
+            ? fallbackErr.message
+            : streamErr instanceof Error
+              ? streamErr.message
+              : "Output construction failed";
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -78,10 +137,57 @@ export default function ScopeOutputScreen() {
       )}
 
       {loading && (
-        <div className="text-center py-12">
-          <div className="inline-block h-8 w-8 rounded-full border-4 border-primary/30 border-t-primary animate-spin" />
-          <p className="text-sm text-gray-500 mt-3">
-            Constructing detailed scope, executive summary, and bill of quantities...
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 max-w-xl mx-auto">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-6 w-6 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+            <p className="text-sm font-semibold text-gray-800">
+              Constructing outputs in parallel…
+            </p>
+          </div>
+          <ul className="space-y-2.5">
+            {steps.map((step) => (
+              <li key={step.key} className="flex items-center gap-3 text-sm">
+                {step.status === "done" ? (
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white flex-shrink-0">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-3 w-3"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </span>
+                ) : step.status === "running" ? (
+                  <span className="h-5 w-5 rounded-full border-2 border-primary/40 border-t-primary animate-spin flex-shrink-0" />
+                ) : (
+                  <span className="h-5 w-5 rounded-full border-2 border-gray-300 flex-shrink-0" />
+                )}
+                <span
+                  className={
+                    step.status === "done"
+                      ? "text-gray-900 font-medium"
+                      : step.status === "running"
+                        ? "text-gray-700"
+                        : "text-gray-400"
+                  }
+                >
+                  {step.label}
+                </span>
+                {step.status === "done" && (
+                  <span className="ml-auto text-[11px] font-semibold uppercase tracking-wide text-primary">
+                    Done
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 text-xs text-gray-400">
+            Each output is generated by an independent LLM call and streamed as it completes.
           </p>
         </div>
       )}

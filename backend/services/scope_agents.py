@@ -675,3 +675,133 @@ async def construct_outputs(
         }
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Output construction failed: {e}")
+
+
+async def construct_outputs_stream(
+    refined_scope: str,
+    sector: Optional[str] = None,
+):
+    """Streaming variant of construct_outputs.
+
+    Kicks off the three LLM calls in parallel and yields SSE-formatted events
+    as each one completes, so the frontend can tick off a checklist instead
+    of staring at a spinner.
+
+    Events yielded (all SSE `data: {json}\\n\\n`):
+        {"type": "start", "steps": [{"key": "...", "label": "..."}, ...]}
+        {"type": "step_done", "key": "detailed_scope"}
+        {"type": "step_done", "key": "executive_summary"}
+        {"type": "step_done", "key": "bill_of_quantities"}
+        {"type": "done", "detailed_scope": "...", "executive_summary": "...", "bill_of_quantities": [...]}
+        {"type": "error", "detail": "..."}
+    """
+    if not provider.enabled:
+        yield f"data: {json.dumps({'type': 'error', 'detail': 'LLM provider not configured'})}\n\n"
+        return
+
+    sector_ctx = f" for the {sector} Oil & Gas sector" if sector else ""
+
+    # --- Build the three prompts (same as construct_outputs) ---
+    detailed_prompt = (
+        f"You are a procurement document writer{sector_ctx}. "
+        "Produce a final, production-ready detailed scope of work document from the refined scope below. "
+        "It should be ready to attach to a purchase order or contract. "
+        "Use professional formatting with numbered sections."
+    )
+    detailed_messages = [
+        {"role": "system", "content": detailed_prompt},
+        {"role": "user", "content": refined_scope},
+    ]
+
+    summary_prompt = (
+        "Write a concise 1-page executive summary of this scope of work. "
+        "It should be suitable for management review and include: "
+        "purpose, key deliverables, estimated timeline, and critical requirements. "
+        "Keep it under 500 words."
+    )
+    summary_messages = [
+        {"role": "system", "content": summary_prompt},
+        {"role": "user", "content": refined_scope},
+    ]
+
+    boq_prompt = (
+        f"You are a quantity surveyor{sector_ctx}. "
+        "Extract all quantifiable work items from this scope and produce a bill of quantities. "
+        "Reply ONLY with JSON:\n"
+        "{\n"
+        "  \"items\": [\n"
+        "    {\"item\": \"description\", \"quantity\": 1.0, \"unit\": \"LS|EA|HR|DAY|M2|KG|...\", \"estimated_cost\": 0.0}\n"
+        "  ]\n"
+        "}\n"
+        "Provide realistic cost estimates based on industry rates. Use LS (Lump Sum) for items that cannot be unit-priced."
+    )
+    boq_messages = [
+        {"role": "system", "content": boq_prompt},
+        {"role": "user", "content": refined_scope},
+    ]
+
+    # Announce the checklist up-front so the UI can render all steps as pending.
+    steps = [
+        {"key": "detailed_scope", "label": "Building detailed scope of work"},
+        {"key": "executive_summary", "label": "Writing executive summary"},
+        {"key": "bill_of_quantities", "label": "Preparing bill of quantities"},
+    ]
+    yield f"data: {json.dumps({'type': 'start', 'steps': steps})}\n\n"
+
+    # Kick off all three calls in parallel. Use create_task so we can wait on
+    # completion-order rather than a single gather that only returns at the end.
+    detailed_task = asyncio.create_task(
+        asyncio.wait_for(provider.generate(detailed_messages), timeout=_LLM_TIMEOUT)
+    )
+    summary_task = asyncio.create_task(
+        asyncio.wait_for(provider.generate(summary_messages), timeout=_LLM_TIMEOUT)
+    )
+    boq_task = asyncio.create_task(
+        asyncio.wait_for(provider.generate(boq_messages), timeout=_LLM_TIMEOUT)
+    )
+
+    task_to_key = {
+        detailed_task: "detailed_scope",
+        summary_task: "executive_summary",
+        boq_task: "bill_of_quantities",
+    }
+    results: Dict[str, Any] = {}
+    pending = set(task_to_key.keys())
+
+    try:
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                key = task_to_key[task]
+                try:
+                    results[key] = task.result()
+                except Exception as exc:
+                    # Cancel any still-running tasks so we don't leak them.
+                    for t in pending:
+                        t.cancel()
+                    yield f"data: {json.dumps({'type': 'error', 'detail': f'{key} failed: {exc}'})}\n\n"
+                    return
+                yield f"data: {json.dumps({'type': 'step_done', 'key': key})}\n\n"
+    except Exception as exc:
+        for t in pending:
+            t.cancel()
+        yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+        return
+
+    # Parse BoQ JSON (same fallback as construct_outputs).
+    boq_raw = results.get("bill_of_quantities", "")
+    try:
+        boq_data = _extract_json(boq_raw)
+        boq_items = boq_data.get("items", [])
+    except Exception:
+        boq_items = [
+            {"item": "Lump Sum — see detailed scope", "quantity": 1, "unit": "LS", "estimated_cost": 0}
+        ]
+
+    final_payload = {
+        "type": "done",
+        "detailed_scope": results.get("detailed_scope", "").strip(),
+        "executive_summary": results.get("executive_summary", "").strip(),
+        "bill_of_quantities": boq_items,
+    }
+    yield f"data: {json.dumps(final_payload)}\n\n"

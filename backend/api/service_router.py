@@ -68,6 +68,7 @@ from services.scope_agents import (
     compare_similarity,
     compress_intent_summary,
     construct_outputs,
+    construct_outputs_stream,
     extract_scope_from_file,
     generate_embedding,
     generate_scope,
@@ -328,6 +329,60 @@ async def api_construct_outputs(
         detailed_scope=result["detailed_scope"],
         executive_summary=result["executive_summary"],
         bill_of_quantities=boq,
+    )
+
+
+@router.post("/scope/{scope_id}/construct/stream")
+async def api_construct_outputs_stream(
+    scope_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """SSE streaming variant of construct. Yields progress events per step
+    so the UI can show a checklist that ticks off each output as it lands."""
+    scope = await session.get(ServiceScope, scope_id)
+    if not scope:
+        raise HTTPException(status_code=404, detail="Scope not found")
+
+    text = scope.refined_scope_text or scope.raw_scope_text
+    sector = scope.oil_gas_sector
+
+    async def event_generator():
+        final_data = None
+        try:
+            async for sse_chunk in construct_outputs_stream(text, sector):
+                yield sse_chunk
+                # Capture the final "done" event so we can persist after streaming.
+                if '"type": "done"' in sse_chunk or '"type":"done"' in sse_chunk:
+                    data_line = sse_chunk.strip().removeprefix("data: ")
+                    try:
+                        final_data = json.loads(data_line)
+                    except Exception:
+                        pass
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+            return
+
+        # Persist to DB once all three outputs have been produced.
+        if final_data and final_data.get("detailed_scope"):
+            try:
+                async with async_session() as bg_session:
+                    bg_scope = await bg_session.get(ServiceScope, scope_id)
+                    if bg_scope:
+                        bg_scope.detailed_scope = final_data["detailed_scope"]
+                        bg_scope.executive_summary = final_data.get("executive_summary", "")
+                        bg_scope.bill_of_quantities = final_data.get("bill_of_quantities", [])
+                        bg_scope.status = "constructed"
+                        bg_scope.updated_at = datetime.datetime.utcnow()
+                        bg_session.add(bg_scope)
+                        await bg_session.commit()
+                yield f"data: {json.dumps({'type': 'saved'})}\n\n"
+            except Exception as exc:
+                yield f"data: {json.dumps({'type': 'error', 'detail': f'Failed to save outputs: {exc}'})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

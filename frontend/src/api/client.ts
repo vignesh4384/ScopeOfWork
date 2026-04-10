@@ -130,6 +130,65 @@ export function constructOutputs(scopeId: number) {
   );
 }
 
+export type ConstructStreamEvent =
+  | { type: "start"; steps: { key: string; label: string }[] }
+  | { type: "step_done"; key: string }
+  | {
+      type: "done";
+      detailed_scope: string;
+      executive_summary: string;
+      bill_of_quantities: import("../types").BoQLineItem[];
+    }
+  | { type: "saved" }
+  | { type: "error"; detail: string };
+
+export async function* constructOutputsStream(
+  scopeId: number,
+): AsyncGenerator<ConstructStreamEvent> {
+  const res = await fetch(
+    `${API_BASE}/api/service/scope/${scopeId}/construct/stream`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    },
+  );
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(msg || `Stream request failed: ${res.status}`);
+  }
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      try {
+        const event = JSON.parse(line.slice(6)) as ConstructStreamEvent;
+        yield event;
+      } catch {
+        // skip malformed lines
+      }
+    }
+  }
+  if (buffer.startsWith("data: ")) {
+    try {
+      yield JSON.parse(buffer.slice(6)) as ConstructStreamEvent;
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export function fetchScope(scopeId: number) {
   return getJson<Record<string, unknown>>(`/api/service/scope/${scopeId}`);
 }
