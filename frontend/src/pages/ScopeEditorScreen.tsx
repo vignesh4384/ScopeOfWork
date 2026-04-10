@@ -12,8 +12,7 @@ import {
 } from "../api/client";
 import type { ChatRevisionSummary } from "../types";
 import ScopeRenderer from "../components/ScopeRenderer";
-import ConversationHistory from "../components/ConversationHistory";
-import ChatInput from "../components/ChatInput";
+import ChatPanel from "../components/ChatPanel";
 
 export default function ScopeEditorScreen() {
   const { state, setRefinedScopeText, setChatSessionId } = useWizard();
@@ -25,7 +24,6 @@ export default function ScopeEditorScreen() {
   );
   const [currentRevision, setCurrentRevision] = useState<number>(1);
   const [selectedRevision, setSelectedRevision] = useState<number | null>(null);
-  const [latestChangesSummary, setLatestChangesSummary] = useState<string>("");
   const [editMode, setEditMode] = useState(false);
   const [editableScope, setEditableScope] = useState<string>(currentScope);
   const [loading, setLoading] = useState(false);
@@ -60,7 +58,6 @@ export default function ScopeEditorScreen() {
             setCurrentScope(detail.scope_document);
             setEditableScope(detail.scope_document);
             setRefinedScopeText(detail.scope_document);
-            setLatestChangesSummary(latest.changes_summary || "");
           }
         } else {
           // Create a new session
@@ -93,7 +90,6 @@ export default function ScopeEditorScreen() {
 
     try {
       let finalScope = "";
-      let finalChanges = "";
       let finalRevNum = 0;
 
       for await (const event of sendChatMessageStream(
@@ -106,7 +102,6 @@ export default function ScopeEditorScreen() {
           setStreamText((prev) => prev + event.text);
         } else if (event.type === "done") {
           finalScope = event.scope_document;
-          finalChanges = event.changes_summary;
           setStreaming(false);
         } else if (event.type === "saved") {
           finalRevNum = event.revision_number;
@@ -119,7 +114,6 @@ export default function ScopeEditorScreen() {
         setCurrentScope(finalScope);
         setEditableScope(finalScope);
         setRefinedScopeText(finalScope);
-        setLatestChangesSummary(finalChanges);
         if (finalRevNum) setCurrentRevision(finalRevNum);
         setSelectedRevision(null);
         setEditMode(false);
@@ -143,7 +137,6 @@ export default function ScopeEditorScreen() {
         setRefinedScopeText(res.scope_document);
         setCurrentRevision(res.revision_number);
         setSelectedRevision(null);
-        setLatestChangesSummary(res.changes_summary);
         setEditMode(false);
         const history = await getChatHistory(state.scopeId!, state.chatSessionId!);
         setRevisions(history.revisions);
@@ -207,7 +200,6 @@ export default function ScopeEditorScreen() {
       setRefinedScopeText(res.scope_document);
       setCurrentRevision(res.revision_number);
       setSelectedRevision(null);
-      setLatestChangesSummary(res.changes_summary);
       const history = await getChatHistory(state.scopeId, state.chatSessionId);
       setRevisions(history.revisions);
     } catch (e: unknown) {
@@ -250,21 +242,9 @@ export default function ScopeEditorScreen() {
         </div>
       )}
 
-      <div className="grid grid-cols-12 gap-4" style={{ minHeight: "70vh" }}>
-        {/* LEFT — Conversation history */}
-        <div className="col-span-12 lg:col-span-3">
-          <ConversationHistory
-            revisions={revisions}
-            selectedRevision={selectedRevision}
-            currentRevision={currentRevision}
-            onSelectRevision={handleSelectRevision}
-            onRevert={handleRevert}
-            loading={chatLoading}
-          />
-        </div>
-
-        {/* CENTER — Scope viewer/editor */}
-        <div className="col-span-12 lg:col-span-6 flex flex-col rounded-2xl border border-gray-200 bg-white overflow-hidden">
+      <div className="grid grid-cols-12 gap-4" style={{ minHeight: "72vh" }}>
+        {/* LEFT — Scope viewer/editor (hero) */}
+        <div className="col-span-12 lg:col-span-7 flex flex-col rounded-2xl border border-gray-200 bg-white overflow-hidden">
           <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-gray-800">Scope Document</h3>
@@ -308,20 +288,18 @@ export default function ScopeEditorScreen() {
           </div>
         </div>
 
-        {/* RIGHT — Chat input */}
-        <div className="col-span-12 lg:col-span-3">
-          <ChatInput
+        {/* RIGHT — Unified chat panel (history + input) */}
+        <div className="col-span-12 lg:col-span-5">
+          <ChatPanel
+            revisions={revisions}
+            currentRevision={currentRevision}
+            selectedRevision={selectedRevision}
+            onSelectRevision={handleSelectRevision}
+            onRevert={handleRevert}
             onSend={handleSend}
             loading={chatLoading}
             streaming={streaming}
             disabled={isViewingHistorical || !state.chatSessionId}
-            latestChangesSummary={latestChangesSummary}
-            metadata={{
-              source: state.scopeSource === "uploaded" ? "Uploaded file" : "AI generated",
-              scopeId: state.scopeId,
-              revisionCount: revisions.length,
-              sector: state.sector,
-            }}
           />
         </div>
       </div>
