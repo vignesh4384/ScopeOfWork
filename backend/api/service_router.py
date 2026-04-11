@@ -218,31 +218,81 @@ async def api_similarity_check(
     if not scope:
         raise HTTPException(status_code=404, detail="Scope not found")
 
-    # --- Source 1: Contract Intelligence normalized scopes (read-only) ---
-    ci_ref_data: list[dict] = []
-    try:
-        ci_result = await session.execute(
-            text(
-                "SELECT id, contract_number, supplier_name, scope_normalized, scope_embedding "
-                "FROM contracts WHERE scope_normalized IS NOT NULL"
+    scope_text = scope.refined_scope_text or scope.raw_scope_text
+
+    # Pre-generate the new scope's embedding ONCE so we can use it for both
+    # the SQL VECTOR_DISTANCE pre-retrieval against contracts AND the Python
+    # cosine pass over SOW-internal ScopeReference rows. Falls back gracefully
+    # if Azure OpenAI embeddings are not configured.
+    from services.scope_agents import generate_embedding, _embeddings_available
+    query_embedding = None
+    if _embeddings_available() and scope_text:
+        try:
+            query_embedding = await generate_embedding(scope_text)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Pre-embedding for similarity check failed, falling back: %s", exc
             )
-        )
-        ci_rows = ci_result.fetchall()
-        for row in ci_rows:
-            ci_ref_data.append({
-                "id": row[0],
-                "title": f"{row[1]} — {row[2]}",  # contract_number — supplier_name
-                "description": row[3] or "",         # scope_normalized
-                "embedding": row[4],                 # scope_embedding (JSON string or None)
-                "source": "contract_intelligence",
-            })
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning(
-            "Could not query contracts table for similarity: %s", exc
-        )
+
+    # --- Source 1: Contract Intelligence — ranked in SQL via VECTOR_DISTANCE ---
+    # Uses the new contracts.scope_embedding_vec VECTOR(1536) column populated
+    # by the parent project (Autonomous Sourcing). Returns top 5 pre-scored.
+    # NOTE: NVARCHAR(MAX) double-cast — pyodbc binds long strings as ntext and
+    # SQL Server forbids ntext -> VECTOR conversion. Cast to nvarchar first.
+    ci_ref_data: list[dict] = []
+    if query_embedding is not None:
+        try:
+            ci_result = await session.execute(
+                text(
+                    "SELECT TOP 5 id, contract_number, supplier_name, scope_normalized, "
+                    "       (1 - VECTOR_DISTANCE('cosine', scope_embedding_vec, "
+                    "             CAST(CAST(:q AS NVARCHAR(MAX)) AS VECTOR(1536)))) AS cos_sim "
+                    "FROM contracts "
+                    "WHERE scope_embedding_vec IS NOT NULL AND scope_normalized IS NOT NULL "
+                    "ORDER BY VECTOR_DISTANCE('cosine', scope_embedding_vec, "
+                    "         CAST(CAST(:q AS NVARCHAR(MAX)) AS VECTOR(1536))) ASC"
+                ),
+                {"q": json.dumps(query_embedding)},
+            )
+            ci_rows = ci_result.fetchall()
+            for row in ci_rows:
+                ci_ref_data.append({
+                    "id": row[0],
+                    "title": f"{row[1]} — {row[2]}",
+                    "description": row[3] or "",
+                    "_cosine": float(row[4]),  # pre-scored — compare_similarity will honor this
+                    "source": "contract_intelligence",
+                })
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "VECTOR_DISTANCE query failed, falling back to legacy JSON path: %s", exc
+            )
+            # Fallback: legacy path reads scope_embedding (still dual-written)
+            try:
+                ci_result = await session.execute(
+                    text(
+                        "SELECT id, contract_number, supplier_name, scope_normalized, scope_embedding "
+                        "FROM contracts WHERE scope_normalized IS NOT NULL"
+                    )
+                )
+                for row in ci_result.fetchall():
+                    ci_ref_data.append({
+                        "id": row[0],
+                        "title": f"{row[1]} — {row[2]}",
+                        "description": row[3] or "",
+                        "embedding": row[4],
+                        "source": "contract_intelligence",
+                    })
+            except Exception as exc2:
+                logging.getLogger(__name__).warning(
+                    "Legacy fallback also failed: %s", exc2
+                )
 
     # --- Source 2: SOW Agent reference scopes (ScopeReference table) ---
+    # These live in SOW's own table, not in contracts, so they still go through
+    # Python cosine inside compare_similarity.
     sow_result = await session.execute(select(ScopeReference))
     sow_refs = sow_result.scalars().all()
     sow_ref_data = [
@@ -267,8 +317,9 @@ async def api_similarity_check(
         await session.commit()
         return SimilarityResponse(matches=[])
 
-    scope_text = scope.refined_scope_text or scope.raw_scope_text
-    matches = await compare_similarity(scope_text, all_refs)
+    matches = await compare_similarity(
+        scope_text, all_refs, precomputed_query_embedding=query_embedding
+    )
 
     # Log results (only for ScopeReference matches, not CI matches)
     for match in matches:

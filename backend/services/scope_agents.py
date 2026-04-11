@@ -487,6 +487,7 @@ def _embeddings_available() -> bool:
 async def compare_similarity(
     scope_text: str,
     reference_scopes: List[Dict[str, Any]],
+    precomputed_query_embedding: Optional[List[float]] = None,
 ) -> List[Dict[str, Any]]:
     """Similarity comparison with two possible strategies:
 
@@ -495,13 +496,23 @@ async def compare_similarity(
         Stage 2: LLM deep comparison on top candidates
     If embeddings are NOT available (e.g. only Anthropic configured):
         LLM-only comparison against all references (limited to top N by text)
+
+    `precomputed_query_embedding` lets the caller hand in the new scope's
+    embedding (avoiding a duplicate Azure OpenAI call when the router has
+    already generated it for an Azure SQL VECTOR_DISTANCE pre-retrieval).
+
+    Any reference dict that already carries a `_cosine` field is treated as
+    pre-scored and skipped by the Python cosine loop. This is how the router
+    feeds back contract_intelligence rows that were ranked in SQL via
+    VECTOR_DISTANCE against the new scope_embedding_vec column.
     """
     if not reference_scopes:
         return []
 
     use_embeddings = _embeddings_available()
+    new_embedding = precomputed_query_embedding
 
-    if use_embeddings:
+    if use_embeddings and new_embedding is None:
         # --- Stage 1: Embedding-based retrieval ---
         try:
             new_embedding = await generate_embedding(scope_text)
@@ -511,6 +522,10 @@ async def compare_similarity(
     if use_embeddings:
         scored: List[Dict[str, Any]] = []
         for ref in reference_scopes:
+            # Honor pre-scored refs (e.g. contracts ranked via SQL VECTOR_DISTANCE)
+            if "_cosine" in ref:
+                scored.append(ref)
+                continue
             ref_embedding_str = ref.get("embedding")
             if not ref_embedding_str:
                 scored.append({**ref, "_cosine": 0.0})
