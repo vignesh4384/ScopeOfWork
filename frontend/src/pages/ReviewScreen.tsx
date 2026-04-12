@@ -34,6 +34,7 @@ export default function ReviewScreen() {
             wbs: item.commercial.wbs ?? null,
             cost_center: item.commercial.cost_center ?? null,
             gl_account: item.commercial.gl_account,
+            material_number: item.material_number ?? undefined,
           })
         )
       );
@@ -68,6 +69,7 @@ export default function ReviewScreen() {
             wbs: item.commercial.wbs ?? null,
             cost_center: item.commercial.cost_center ?? null,
             gl_account: item.commercial.gl_account,
+            material_number: item.material_number ?? undefined,
           })
         )
       );
@@ -138,6 +140,11 @@ export default function ReviewScreen() {
                 <div>
                   <p className="text-sm uppercase text-muted">Item {idx + 1}</p>
                   <p className="text-lg font-semibold text-gray-900">{item.initial_description}</p>
+                  {item.material_number && (
+                    <p className="text-sm font-medium text-green-700">
+                      Material: {item.material_number}
+                    </p>
+                  )}
                   <p className="text-sm text-muted">
                     Type: {item.type} · Need-by: {item.commercial.need_by_date} · {renderCostCodes(item)}
                   </p>

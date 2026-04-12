@@ -63,8 +63,30 @@ export interface ItemDraft {
   initial_description: string;
   parameters: Record<string, unknown>;
   commercial: CommercialData;
+  material_number?: string;
   scopeId?: number;
   scopeOutputs?: ScopeOutputs;
+}
+
+// ---------------------------------------------------------------------------
+// Material Master Match types
+// ---------------------------------------------------------------------------
+
+export interface MaterialMatchItem {
+  material: string;
+  material_description: string;
+  manufacturer_name?: string;
+  manufacturer_part_number?: string;
+  material_type?: string;
+  material_group?: string;
+  base_unit?: string;
+  moving_price?: string;
+  long_text?: string;
+  similarity_score: number;
+}
+
+export interface MaterialMatchResponse {
+  matches: MaterialMatchItem[];
 }
 
 // ---------------------------------------------------------------------------

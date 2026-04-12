@@ -8,6 +8,7 @@ import ScopeEditorScreen from "./pages/ScopeEditorScreen";
 import GoldPlatingScreen from "./pages/GoldPlatingScreen";
 import SimilarityScreen from "./pages/SimilarityScreen";
 import ScopeOutputScreen from "./pages/ScopeOutputScreen";
+import MaterialMatchScreen from "./pages/MaterialMatchScreen";
 import { useWizard } from "./context/WizardContext";
 
 type Step = { path: string; label: string; idx: number };
@@ -15,8 +16,9 @@ type Step = { path: string; label: string; idx: number };
 const materialSteps: Step[] = [
   { path: "/", label: "Describe", idx: 1 },
   { path: "/details", label: "Details", idx: 2 },
-  { path: "/commercial", label: "Commercial", idx: 3 },
-  { path: "/review", label: "Review", idx: 4 },
+  { path: "/material-match", label: "Match", idx: 3 },
+  { path: "/commercial", label: "Commercial", idx: 4 },
+  { path: "/review", label: "Review", idx: 5 },
 ];
 
 const serviceSteps: Step[] = [
@@ -111,6 +113,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<InitialScreen />} />
               <Route path="/details" element={<DetailsScreen />} />
+              <Route path="/material-match" element={<MaterialMatchScreen />} />
               <Route path="/scope-source" element={<ScopeSourceScreen />} />
               <Route path="/scope-editor" element={<ScopeEditorScreen />} />
               <Route path="/gold-plating" element={<GoldPlatingScreen />} />

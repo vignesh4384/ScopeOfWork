@@ -42,7 +42,11 @@ export default function DetailsScreen() {
 
   const handleNext = () => {
     setParameters(formValues);
-    navigate("/commercial");
+    if (state.type === "material") {
+      navigate("/material-match");
+    } else {
+      navigate("/commercial");
+    }
   };
 
   const loading = loadingMaterial || loadingService;

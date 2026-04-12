@@ -25,6 +25,14 @@ export default function CommercialScreen() {
     }
   }, [state.type, state.items.length, navigate]);
 
+  // Pre-fill estimated price from selected material's moving_price
+  useEffect(() => {
+    if (state.selectedMaterial?.moving_price && !form.estimate_price) {
+      setForm((prev) => ({ ...prev, estimate_price: state.selectedMaterial!.moving_price! }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.selectedMaterial]);
+
   const update = (key: keyof typeof form, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
@@ -75,12 +83,21 @@ export default function CommercialScreen() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-primary">Step 3 · Commercial</p>
+          <p className="text-sm font-semibold text-primary">Step {state.type === "material" ? 4 : 3} · Commercial</p>
           <h2 className="mt-1 text-2xl font-semibold text-gray-900">Commercial & accounting details</h2>
           <p className="text-sm text-muted">Capture the finance data we need before generating the SAP-ready payload.</p>
         </div>
         <span className="badge">SAP-ready</span>
       </div>
+
+      {state.selectedMaterial && (
+        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm">
+          <span className="font-semibold text-green-800">Matched material:</span>{" "}
+          <span className="text-green-700">
+            {state.selectedMaterial.material} &mdash; {state.selectedMaterial.material_description}
+          </span>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2">

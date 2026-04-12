@@ -1,6 +1,7 @@
 import type {
   ClassificationResponse,
   MaterialDetailsResponse,
+  MaterialMatchResponse,
   ServiceQuestionsResponse,
   PurchaseRequestCreate,
   SAPPayload,
@@ -62,6 +63,10 @@ export function fetchServiceQuestions(description: string) {
 
 export function createPurchaseRequest(payload: PurchaseRequestCreate) {
   return postJson<SAPPayload>("/api/purchase-requests", payload);
+}
+
+export function fetchMaterialMatches(description: string, parameters: Record<string, unknown>) {
+  return postJson<MaterialMatchResponse>("/api/material-match", { description, parameters });
 }
 
 // ---------------------------------------------------------------------------

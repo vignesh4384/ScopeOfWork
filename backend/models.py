@@ -17,6 +17,7 @@ class PurchaseRequest(SQLModel, table=True):
     wbs: Optional[str] = None
     cost_center: Optional[str] = None
     gl_account: Optional[str] = None
+    material_number: Optional[str] = None  # SAP material master number (from match step)
     created_at: datetime.datetime = Field(
         default_factory=datetime.datetime.utcnow, nullable=False
     )
@@ -139,3 +140,31 @@ class ScopeIntentSummary(SQLModel, table=True):
     updated_at: datetime.datetime = Field(
         default_factory=datetime.datetime.utcnow, nullable=False
     )
+
+
+# ---------------------------------------------------------------------------
+# Material Master table (data lives in Azure SQL, populated by ingestion script)
+# ---------------------------------------------------------------------------
+
+
+class MaterialMaster(SQLModel, table=True):
+    """Material master records with vector embeddings for similarity matching."""
+
+    __tablename__ = "material_master"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    material: str = Field(sa_column=Column(String(20), index=True, nullable=False))
+    material_description: str = Field(sa_column=Column(String(255), nullable=False))
+    plant: Optional[str] = Field(default=None, sa_column=Column(String(10)))
+    critical_part: Optional[str] = Field(default=None, sa_column=Column(String(10)))
+    material_group: Optional[str] = Field(default=None, sa_column=Column(String(20)))
+    base_unit: Optional[str] = Field(default=None, sa_column=Column(String(10)))
+    moving_price: Optional[str] = Field(default=None, sa_column=Column(String(20)))
+    old_material: Optional[str] = Field(default=None, sa_column=Column(String(20)))
+    material_type: Optional[str] = Field(default=None, sa_column=Column(String(50)))
+    manufacturer_part_number: Optional[str] = Field(default=None, sa_column=Column(String(100)))
+    manufacturer_number: Optional[str] = Field(default=None, sa_column=Column(String(20)))
+    manufacturer_name: Optional[str] = Field(default=None, sa_column=Column(String(255)))
+    long_text: Optional[str] = Field(default=None, sa_column=Column(Text))
+    parsed_attributes: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    embedding_text: Optional[str] = Field(default=None, sa_column=Column(Text))

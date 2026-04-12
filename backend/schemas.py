@@ -56,6 +56,7 @@ class PurchaseRequestCreate(BaseModel):
     wbs: Optional[str] = None
     cost_center: Optional[str] = None
     gl_account: str
+    material_number: Optional[str] = None
 
 
 class SAPPayload(BaseModel):
@@ -68,3 +69,30 @@ class PurchaseRequestRead(PurchaseRequestCreate):
 
     class Config:
         from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Material Master Match
+# ---------------------------------------------------------------------------
+
+
+class MaterialMatchRequest(BaseModel):
+    description: str
+    parameters: dict
+
+
+class MaterialMatchItem(BaseModel):
+    material: str
+    material_description: str
+    manufacturer_name: Optional[str] = None
+    manufacturer_part_number: Optional[str] = None
+    material_type: Optional[str] = None
+    material_group: Optional[str] = None
+    base_unit: Optional[str] = None
+    moving_price: Optional[str] = None
+    long_text: Optional[str] = None
+    similarity_score: float
+
+
+class MaterialMatchResponse(BaseModel):
+    matches: List[MaterialMatchItem]

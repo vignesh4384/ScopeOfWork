@@ -3,6 +3,7 @@ import type {
   RequestType,
   ItemDraft,
   CommercialData,
+  MaterialMatchItem,
   OilGasSector,
   GoldPlatingResponse,
   SimilarityMatch,
@@ -15,6 +16,8 @@ type WizardState = {
   parameters: Record<string, unknown>;
   commercial?: CommercialData;
   items: ItemDraft[];
+  // Material match
+  selectedMaterial?: MaterialMatchItem;
   // Service scope flow
   scopeId?: number;
   scopeSource?: "new" | "uploaded";
@@ -35,6 +38,7 @@ type WizardContextType = {
   setCommercial: (data: CommercialData) => void;
   addItem: (commercial: CommercialData) => void;
   deleteItem: (index: number) => void;
+  setSelectedMaterial: (material: MaterialMatchItem | undefined) => void;
   reset: () => void;
   // Service scope setters
   setScopeId: (id: number) => void;
@@ -77,6 +81,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         initial_description: prev.initialDescription,
         parameters: prev.parameters,
         commercial,
+        material_number: prev.selectedMaterial?.material,
         scopeId: prev.scopeId,
         scopeOutputs: prev.scopeOutputs,
       };
@@ -91,6 +96,9 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...prev,
       items: prev.items.filter((_, i) => i !== index),
     }));
+
+  const setSelectedMaterial = (selectedMaterial: MaterialMatchItem | undefined) =>
+    setState((prev) => ({ ...prev, selectedMaterial }));
 
   const reset = () => setState(initialState);
 
@@ -118,6 +126,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setCommercial,
         addItem,
         deleteItem,
+        setSelectedMaterial,
         reset,
         setScopeId,
         setScopeSource,

@@ -15,6 +15,7 @@ def build_sap_payload(req: PurchaseRequestCreate) -> Dict:
             "wbs": req.wbs,
             "cost_center": req.cost_center,
             "gl_account": req.gl_account,
+            "material_number": req.material_number,
             "details": req.parameters,
         }
     }

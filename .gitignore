@@ -16,3 +16,15 @@ Thumbs.db
 
 # Vite / build
 frontend/.vite
+
+# Local-only scripts (ingestion utilities, not deployed)
+backend/scripts/
+
+# Project artifacts
+SOW_AGENT_IMPLEMENTATION_PLAN.md
+SOW_Agent_Architecture.drawio
+SOW_Agent_Architecture.drawio.mmd
+SOW_Agent_Architecture.png
+clm_sow.db
+clm_scope_store.py
+material data/
