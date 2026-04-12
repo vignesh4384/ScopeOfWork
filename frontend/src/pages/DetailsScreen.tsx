@@ -22,12 +22,16 @@ export default function DetailsScreen() {
     queryKey: ["material-details", state.initialDescription],
     queryFn: () => fetchMaterialDetails(state.initialDescription),
     enabled: state.type === "material" && !!state.initialDescription,
+    staleTime: Infinity,      // never refetch — LLM responses are non-deterministic
+    refetchOnWindowFocus: false,
   });
 
   const { data: serviceData, isFetching: loadingService, error: serviceError } = useQuery({
     queryKey: ["service-questions", state.initialDescription],
     queryFn: () => fetchServiceQuestions(state.initialDescription),
     enabled: state.type === "service" && !!state.initialDescription,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 
   const fields: ParameterField[] = useMemo(() => {
