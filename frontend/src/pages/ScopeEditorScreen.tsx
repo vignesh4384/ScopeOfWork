@@ -12,7 +12,9 @@ import {
 } from "../api/client";
 import type { ChatRevisionSummary } from "../types";
 import ScopeRenderer from "../components/ScopeRenderer";
-import ChatPanel from "../components/ChatPanel";
+import ChatInput from "../components/ChatInput";
+import RevisionStrip from "../components/RevisionStrip";
+import ConversationDrawer from "../components/ConversationDrawer";
 
 export default function ScopeEditorScreen() {
   const { state, setRefinedScopeText, setChatSessionId } = useWizard();
@@ -31,6 +33,7 @@ export default function ScopeEditorScreen() {
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [error, setError] = useState<string>("");
+  const [showConversation, setShowConversation] = useState(false);
 
   const startedRef = useRef(false);
 
@@ -43,13 +46,11 @@ export default function ScopeEditorScreen() {
       setError("");
       try {
         if (state.chatSessionId) {
-          // Restore existing session
           const history = await getChatHistory(state.scopeId!, state.chatSessionId);
           setRevisions(history.revisions);
           if (history.revisions.length > 0) {
             const latest = history.revisions[history.revisions.length - 1];
             setCurrentRevision(latest.revision_number);
-            // Fetch latest scope document
             const detail = await getRevisionDetail(
               state.scopeId!,
               state.chatSessionId,
@@ -60,14 +61,12 @@ export default function ScopeEditorScreen() {
             setRefinedScopeText(detail.scope_document);
           }
         } else {
-          // Create a new session
           const start = await startChat(state.scopeId!);
           setChatSessionId(start.session_id);
           setCurrentRevision(start.revision_number);
           setCurrentScope(start.scope_document);
           setEditableScope(start.scope_document);
           setRefinedScopeText(start.scope_document);
-          // Hydrate the revisions list with the seed revision
           const history = await getChatHistory(state.scopeId!, start.session_id);
           setRevisions(history.revisions);
         }
@@ -122,7 +121,6 @@ export default function ScopeEditorScreen() {
         setRevisions(history.revisions);
       }
     } catch (e: unknown) {
-      // Fallback to non-streaming endpoint
       setStreaming(false);
       setStreamText("");
       try {
@@ -153,7 +151,6 @@ export default function ScopeEditorScreen() {
     if (!state.scopeId || !state.chatSessionId) return;
     if (revisionNumber === currentRevision) {
       setSelectedRevision(null);
-      // Reset to current scope
       const latestRev = revisions.find((r) => r.revision_number === currentRevision);
       if (latestRev) {
         try {
@@ -212,7 +209,6 @@ export default function ScopeEditorScreen() {
   const handleAccept = async () => {
     if (!state.scopeId || !state.chatSessionId) return;
     try {
-      // If user has unsaved manual edits, send them as a final edit-only update
       const finalScope = editMode && editableScope !== currentScope ? editableScope : currentScope;
       setRefinedScopeText(finalScope);
       await finaliseChat(state.scopeId, state.chatSessionId);
@@ -225,10 +221,11 @@ export default function ScopeEditorScreen() {
   const isViewingHistorical = selectedRevision !== null && selectedRevision !== currentRevision;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      {/* Step header */}
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-semibold text-primary">Step 3 · Scope Editor</p>
+          <p className="text-sm font-semibold text-primary">Step 3 &middot; Scope Editor</p>
           <h2 className="text-xl font-semibold text-gray-900">Refine your scope through chat</h2>
           <p className="text-sm text-gray-500 mt-1">
             Tell the agent what to add, change, or remove. Each message creates a new revision you can revisit.
@@ -242,9 +239,10 @@ export default function ScopeEditorScreen() {
         </div>
       )}
 
-      <div className="grid grid-cols-12 gap-4" style={{ minHeight: "72vh" }}>
-        {/* LEFT — Scope viewer/editor (hero) */}
-        <div className="col-span-12 lg:col-span-7 flex flex-col rounded-2xl border border-gray-200 bg-white overflow-hidden">
+      {/* Stacked vertical layout */}
+      <div className="flex flex-col" style={{ minHeight: "70vh" }}>
+        {/* Section 1: Scope Document — hero, takes available space */}
+        <div className="flex-1 flex flex-col rounded-2xl border border-gray-200 bg-white overflow-hidden min-h-[400px]">
           <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-gray-800">Scope Document</h3>
@@ -253,7 +251,7 @@ export default function ScopeEditorScreen() {
               </span>
               {isViewingHistorical && (
                 <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                  Read-only — historical view
+                  Read-only &mdash; historical view
                 </span>
               )}
             </div>
@@ -268,7 +266,7 @@ export default function ScopeEditorScreen() {
 
           <div className="flex-1 overflow-y-auto p-5">
             {loading ? (
-              <p className="text-sm text-gray-500">Loading scope…</p>
+              <p className="text-sm text-gray-500">Loading scope...</p>
             ) : streaming && streamText ? (
               <div className="relative">
                 <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed text-gray-700">
@@ -280,7 +278,7 @@ export default function ScopeEditorScreen() {
               <textarea
                 value={editableScope}
                 onChange={(e) => setEditableScope(e.target.value)}
-                className="w-full h-full min-h-[500px] rounded-xl border border-gray-300 p-3 text-sm font-mono leading-relaxed focus:ring-2 focus:ring-primary/30 focus:border-primary resize-y"
+                className="w-full h-full min-h-[400px] rounded-xl border border-gray-300 p-3 text-sm font-mono leading-relaxed focus:ring-2 focus:ring-primary/30 focus:border-primary resize-y"
               />
             ) : (
               <ScopeRenderer text={currentScope} />
@@ -288,22 +286,44 @@ export default function ScopeEditorScreen() {
           </div>
         </div>
 
-        {/* RIGHT — Unified chat panel (history + input) */}
-        <div className="col-span-12 lg:col-span-5">
-          <ChatPanel
+        {/* Section 2: Conversation Drawer (collapsible) */}
+        <div className="mt-3">
+          <ConversationDrawer
+            isOpen={showConversation}
+            onToggle={() => setShowConversation(!showConversation)}
             revisions={revisions}
             currentRevision={currentRevision}
             selectedRevision={selectedRevision}
             onSelectRevision={handleSelectRevision}
             onRevert={handleRevert}
+            loading={chatLoading}
+            streaming={streaming}
+          />
+        </div>
+
+        {/* Section 3: Chat Input */}
+        <div className="mt-3">
+          <ChatInput
             onSend={handleSend}
             loading={chatLoading}
             streaming={streaming}
             disabled={isViewingHistorical || !state.chatSessionId}
           />
         </div>
+
+        {/* Section 4: Revision Strip */}
+        <div className="mt-3">
+          <RevisionStrip
+            revisions={revisions}
+            currentRevision={currentRevision}
+            selectedRevision={selectedRevision}
+            onSelectRevision={handleSelectRevision}
+            onRevert={handleRevert}
+          />
+        </div>
       </div>
 
+      {/* Footer buttons */}
       <div className="flex justify-between gap-3 pt-2">
         <button
           onClick={() => navigate("/scope-source")}

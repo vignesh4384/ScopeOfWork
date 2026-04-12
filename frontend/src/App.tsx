@@ -68,6 +68,9 @@ function Stepper() {
 }
 
 export default function App() {
+  const location = useLocation();
+  const isEditorPage = location.pathname === "/scope-editor";
+
   return (
     <div className="min-h-screen bg-surface">
       <header className="relative overflow-hidden rounded-b-3xl gradient-hero pb-12 shadow-xl">
@@ -103,7 +106,7 @@ export default function App() {
       </header>
 
       <main className="-mt-10 pb-16">
-        <div className="mx-auto max-w-5xl px-4">
+        <div className={`mx-auto px-4 ${isEditorPage ? "max-w-7xl" : "max-w-5xl"}`}>
           <div className="glass rounded-3xl p-6 md:p-8">
             <Routes>
               <Route path="/" element={<InitialScreen />} />
