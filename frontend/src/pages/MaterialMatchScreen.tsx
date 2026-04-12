@@ -97,7 +97,7 @@ export default function MaterialMatchScreen() {
                     {Math.round(match.similarity_score * 100)}%
                   </span>
                   <div className="min-w-0">
-                    <h4 className="font-semibold text-gray-800 truncate">
+                    <h4 className="font-semibold text-gray-800">
                       {match.material} &mdash; {match.material_description}
                     </h4>
                     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-gray-500">
@@ -120,6 +120,9 @@ export default function MaterialMatchScreen() {
                         <span>Price: {match.moving_price}</span>
                       )}
                     </div>
+                    <span className="inline-block mt-1.5 text-xs text-primary font-medium">
+                      {expandedIdx === idx ? "Hide details" : "View details"}
+                    </span>
                   </div>
                 </button>
                 <button
@@ -130,12 +133,37 @@ export default function MaterialMatchScreen() {
                 </button>
               </div>
 
-              {expandedIdx === idx && match.long_text && (
-                <div className="border-t border-gray-200 p-4 bg-gray-50">
-                  <p className="text-xs font-medium text-gray-600 mb-2">Detailed specification:</p>
-                  <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">
-                    {match.long_text}
-                  </pre>
+              {expandedIdx === idx && (
+                <div className="border-t border-gray-200 p-4 bg-gray-50 space-y-3">
+                  {match.long_text ? (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-600 mb-1.5">Long description / specification:</p>
+                      <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed bg-white rounded-xl p-3 border border-gray-100">
+{match.long_text}
+                      </pre>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 italic">No long description available for this material.</p>
+                  )}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {[
+                      ["Material Number", match.material],
+                      ["Description", match.material_description],
+                      ["Type", match.material_type],
+                      ["Group", match.material_group],
+                      ["Unit", match.base_unit],
+                      ["Moving Price", match.moving_price],
+                      ["Manufacturer", match.manufacturer_name],
+                      ["Mfr Part#", match.manufacturer_part_number],
+                    ]
+                      .filter(([, val]) => val)
+                      .map(([label, val]) => (
+                        <div key={label} className="rounded-lg bg-white border border-gray-100 px-2.5 py-1.5">
+                          <p className="text-[10px] font-semibold text-gray-400 uppercase">{label}</p>
+                          <p className="text-sm text-gray-800 break-all">{val}</p>
+                        </div>
+                      ))}
+                  </div>
                 </div>
               )}
             </div>
