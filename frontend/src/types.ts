@@ -41,6 +41,7 @@ export interface PurchaseRequestCreate {
   wbs?: string | null;
   cost_center?: string | null;
   gl_account: string;
+  material_number?: string;
 }
 
 export interface SAPPayload {
